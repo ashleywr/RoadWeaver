@@ -18,6 +18,10 @@ public final class PlanningConfig implements SubConfig {
     private boolean dynamicPlanEnabled = true;
     private int dynamicPlanRadiusChunks = RoadConstants.DEFAULT_DYNAMIC_PLAN_RADIUS_CHUNKS;
     private int dynamicPlanStrideChunks = RoadConstants.DEFAULT_DYNAMIC_PLAN_STRIDE_CHUNKS;
+    /** Maximum straight-line endpoint distance considered by the regional graph. */
+    private int maxConnectionLengthBlocks = RoadConstants.DEFAULT_PLAN_MAX_EDGE_LEN_BLOCKS;
+    /** Maximum gap used only to join otherwise disconnected graph components. */
+    private int maxComponentBridgeLengthBlocks = RoadConstants.DEFAULT_BRIDGE_JOIN_LEN_BLOCKS;
     private PlanningAlgorithm planningAlgorithm = PlanningAlgorithm.RNG;
     private TerrainSamplingMode terrainSamplingMode = TerrainSamplingMode.COARSE_CORRIDOR;
 
@@ -35,6 +39,8 @@ public final class PlanningConfig implements SubConfig {
             dynamicPlanStrideChunks = dynamicPlanRadiusChunks;
         }
         dynamicPlanStrideChunks = Math.min(RoadConstants.PLAN_TILE_MAX, dynamicPlanStrideChunks);
+        maxConnectionLengthBlocks = Math.max(512, Math.min(16_384, maxConnectionLengthBlocks));
+        maxComponentBridgeLengthBlocks = Math.max(512, Math.min(maxConnectionLengthBlocks, maxComponentBridgeLengthBlocks));
         if (planningAlgorithm == null) planningAlgorithm = PlanningAlgorithm.RNG;
         if (terrainSamplingMode == null) terrainSamplingMode = TerrainSamplingMode.COARSE_CORRIDOR;
     }
@@ -46,6 +52,8 @@ public final class PlanningConfig implements SubConfig {
         copy.dynamicPlanEnabled = this.dynamicPlanEnabled;
         copy.dynamicPlanRadiusChunks = this.dynamicPlanRadiusChunks;
         copy.dynamicPlanStrideChunks = this.dynamicPlanStrideChunks;
+        copy.maxConnectionLengthBlocks = this.maxConnectionLengthBlocks;
+        copy.maxComponentBridgeLengthBlocks = this.maxComponentBridgeLengthBlocks;
         copy.planningAlgorithm = this.planningAlgorithm;
         copy.terrainSamplingMode = this.terrainSamplingMode;
         return copy;
@@ -59,6 +67,10 @@ public final class PlanningConfig implements SubConfig {
     public void setDynamicPlanRadiusChunks(int v) { this.dynamicPlanRadiusChunks = v; }
     public int dynamicPlanStrideChunks() { return dynamicPlanStrideChunks; }
     public void setDynamicPlanStrideChunks(int v) { this.dynamicPlanStrideChunks = v; }
+    public int maxConnectionLengthBlocks() { return maxConnectionLengthBlocks; }
+    public void setMaxConnectionLengthBlocks(int v) { this.maxConnectionLengthBlocks = v; }
+    public int maxComponentBridgeLengthBlocks() { return maxComponentBridgeLengthBlocks; }
+    public void setMaxComponentBridgeLengthBlocks(int v) { this.maxComponentBridgeLengthBlocks = v; }
     public PlanningAlgorithm planningAlgorithm() { return planningAlgorithm; }
     public void setPlanningAlgorithm(PlanningAlgorithm v) { this.planningAlgorithm = v; }
     public PlanningAlgorithm algorithm() { return planningAlgorithm; }

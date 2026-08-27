@@ -1,24 +1,31 @@
 /* 文件职责：协调首次世界加载时的道路规划、生成、进度与持久化。 */
 package net.shiroha233.roadweaver.generation;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.ModConfig;
+import net.shiroha233.roadweaver.api.RoadNetworkApi;
+import net.shiroha233.roadweaver.api.InitialPlanningBounds;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
+import net.shiroha233.roadweaver.core.model.StructureInfo;
 import net.shiroha233.roadweaver.generation.progress.InitialGenerationProgressSnapshot;
 import net.shiroha233.roadweaver.generation.progress.InitialGenerationProgressTracker;
 import net.shiroha233.roadweaver.generation.progress.InitialGenerationStage;
 import net.shiroha233.roadweaver.map.MapPatchService;
 import net.shiroha233.roadweaver.persistence.RoadPositionQuery;
 import net.shiroha233.roadweaver.persistence.WorldDataProvider;
+import net.shiroha233.roadweaver.persistence.files.StructureFileStorage;
 import net.shiroha233.roadweaver.persistence.sharded.RoadShardStorage;
 import net.shiroha233.roadweaver.planning.path.PlannedPathKey;
 import net.shiroha233.roadweaver.planning.RoadPlanningService;
 import net.shiroha233.roadweaver.postprocess.RoadSnapService;
 import net.shiroha233.roadweaver.runtime.ThreadPoolManager;
 import net.shiroha233.roadweaver.structures.placement.SpawnCabinPlacer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,6 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class InitialGenManager {
     private InitialGenManager() {}
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("roadweaver");
 
     private static volatile boolean active;
     private static final AtomicInteger total = new AtomicInteger(0);
@@ -54,6 +63,17 @@ public final class InitialGenManager {
         if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
         if (!shouldRunInitialGeneration(level)) return;
 
+        ModConfig configured = ConfigService.get();
+        var requestedBounds = RoadNetworkApi.initialPlanningBounds(level);
+        if (requestedBounds.isPresent()) {
+            InitialPlanningBounds bounds = requestedBounds.get();
+            LOGGER.info("Starting RoadWeaver initial regional plan for integration bounds [{},{}..{},{}].",
+                    bounds.minBlockX(), bounds.minBlockZ(), bounds.maxBlockX(), bounds.maxBlockZ());
+        } else {
+            LOGGER.info("Starting RoadWeaver initial regional plan at shared spawn {} with radius {} chunks.",
+                    level.getSharedSpawnPos().toShortString(), configured.planning().initialPlanRadiusChunks());
+        }
+
         active = true;
         total.set(0);
         done.set(0);
@@ -67,14 +87,30 @@ public final class InitialGenManager {
 
         RoadGenerationService.onServerStarted();
 
-        ModConfig cfg = ConfigService.get();
+        ModConfig cfg = configured;
         if (cfg.roadAppearance().spawnCabinEnabled()) {
             SpawnCabinPlacer.ensurePlaced(level);
         }
 
-        RoadPlanningService.initialPlan(level);
-
         WorldDataProvider provider = WorldDataProvider.getInstance();
+        if (requestedBounds.isPresent()) {
+            InitialPlanningBounds bounds = requestedBounds.get();
+            RoadPlanningService.initialPlan(level, bounds.minBlockX(), bounds.minBlockZ(), bounds.maxBlockX(), bounds.maxBlockZ());
+        } else {
+            RoadPlanningService.initialPlan(level);
+        }
+
+        // Discovery writes verified prediction results to StructureFileStorage.
+        // WorldDataProvider's structure list is reserved for manually
+        // registered endpoints, so reading it here discarded every predicted
+        // town and made the League starter callback appear to have no towns.
+        // Supply integrations the same persisted candidates RoadWeaver used
+        // for its road topology, before initial block generation begins.
+        List<StructureInfo> initialStructures = collectInitialStructures(level, requestedBounds, configured);
+        LOGGER.info("RoadWeaver initial regional candidate pass completed with {} verified structure endpoints.",
+                initialStructures.size());
+        RoadNetworkApi.notifyInitialStructuresPlanned(level, initialStructures);
+
         List<StructureConnection> conns = provider.getStructureConnections(level);
         total.set(conns == null ? 0 : conns.size());
         InitialGenerationProgressTracker.updateConnections(total.get(), generating.get(), done.get(), failed.get());
@@ -86,8 +122,30 @@ public final class InitialGenManager {
         if (level == null || !Level.OVERWORLD.equals(level.dimension())) return false;
         WorldDataProvider provider = WorldDataProvider.getInstance();
         List<StructureConnection> conns = provider.getStructureConnections(level);
-        if (conns != null && !conns.isEmpty()) return false;
-        return !RoadShardStorage.hasAnyRoad(level);
+        boolean hasConnections = conns != null && !conns.isEmpty();
+        boolean hasRoads = RoadShardStorage.hasAnyRoad(level);
+        if (hasConnections || hasRoads) {
+            LOGGER.info("Skipping RoadWeaver initial regional plan: existingConnections={}, existingRoads={}.",
+                    hasConnections, hasRoads);
+        }
+        return !hasConnections && !hasRoads;
+    }
+
+    private static List<StructureInfo> collectInitialStructures(ServerLevel level,
+                                                                 java.util.Optional<InitialPlanningBounds> requestedBounds,
+                                                                 ModConfig config) {
+        if (requestedBounds.isPresent()) {
+            InitialPlanningBounds bounds = requestedBounds.get();
+            return StructureFileStorage.queryRect(level,
+                    bounds.minBlockX(), bounds.minBlockZ(), bounds.maxBlockX(), bounds.maxBlockZ());
+        }
+        int radiusChunks = Math.max(1, config.planning().initialPlanRadiusChunks());
+        BlockPos spawn = level.getSharedSpawnPos();
+        int minBlockX = ((spawn.getX() >> 4) - radiusChunks) * 16;
+        int minBlockZ = ((spawn.getZ() >> 4) - radiusChunks) * 16;
+        int maxBlockX = ((spawn.getX() >> 4) + radiusChunks) * 16;
+        int maxBlockZ = ((spawn.getZ() >> 4) + radiusChunks) * 16;
+        return StructureFileStorage.queryRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
     }
 
     public static void blockUntilDone(ServerLevel level) {

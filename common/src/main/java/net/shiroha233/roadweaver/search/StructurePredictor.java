@@ -13,6 +13,8 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.LegacyRandomSource;
+import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.BuiltinStructureSets;
@@ -24,6 +26,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.api.StructurePlacementAdapters;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -149,39 +152,16 @@ public final class StructurePredictor {
             StructureSet set = holder.value();
             StructurePlacement placement = set.placement();
 
-            List<Holder<Structure>> matchedStructures = new ArrayList<>();
+            List<StructureSelection> selections = new ArrayList<>();
             for (StructureSet.StructureSelectionEntry entry : set.structures()) {
                 Holder<Structure> structureHolder = entry.structure();
                 Optional<ResourceKey<Structure>> key = structureHolder.unwrapKey();
                 if (key.isEmpty())
                     continue;
                 ResourceLocation id = key.get().location();
-                if (filters.matches(structureHolder, id)) {
-                    matchedStructures.add(structureHolder);
-                }
+                selections.add(new StructureSelection(structureHolder, id, entry.weight()));
             }
-
-            if (matchedStructures.isEmpty()) {
-                if (filters.hasWhitelist())
-                    continue;
-                for (StructureSet.StructureSelectionEntry entry : set.structures()) {
-                    Holder<Structure> structureHolder = entry.structure();
-                    Optional<ResourceKey<Structure>> key = structureHolder.unwrapKey();
-                    if (key.isEmpty())
-                        continue;
-                    ResourceLocation id = key.get().location();
-                    if (!filters.isBlacklisted(structureHolder, id)) {
-                        matchedStructures.add(structureHolder);
-                    }
-                }
-                if (matchedStructures.isEmpty())
-                    continue;
-            }
-
-            String labelId = matchedStructures.stream()
-                    .map(h -> h.unwrapKey().map(ResourceKey::location).map(ResourceLocation::toString)
-                            .orElse("structure"))
-                    .findFirst().orElse("structure");
+            if (selections.isEmpty()) continue;
 
             if (placement instanceof ConcentricRingsStructurePlacement crsp) {
                 List<ChunkPos> ring = state.getRingPositionsFor(crsp);
@@ -195,64 +175,28 @@ public final class StructurePredictor {
                         continue;
                     if (!placement.isStructureChunk(state, x, z))
                         continue;
+                    StructureSelection selected = selectStructure(selections, level.getSeed(), cp);
+                    if (selected == null || !filters.matches(selected.holder(), selected.id())) continue;
                     BlockPos locatePos = placement.getLocatePos(cp);
-                    result.add(new StructureInfo(locatePos, labelId));
+                    result.add(new StructureInfo(locatePos, selected.id().toString()));
                 }
                 continue;
             }
+            for (ChunkPos candidate : potentialChunks(placement, level.getSeed(), minChunkX, minChunkZ, maxChunkX, maxChunkZ)) {
+                int x = candidate.x;
+                int z = candidate.z;
+                if (!placement.isStructureChunk(state, x, z)) continue;
+                StructureSelection selected = selectStructure(selections, level.getSeed(), candidate);
+                if (selected == null || !filters.matches(selected.holder(), selected.id())) continue;
 
-            if (!(placement instanceof RandomSpreadStructurePlacement rssp)) {
-                continue;
-            }
-
-            Set<Holder<Biome>> allowedBiomes = null;
-            if (biomePrefilter) {
-                allowedBiomes = new HashSet<>();
-                for (Holder<Structure> h : matchedStructures) {
-                    for (Holder<Biome> b : h.value().biomes()) {
-                        allowedBiomes.add(b);
-                    }
+                BlockPos locatePos = placement.getLocatePos(candidate);
+                if (biomePrefilter) {
+                    Holder<Biome> sample = biomeSource.getNoiseBiome(
+                            QuartPos.fromBlock(locatePos.getX()), QuartPos.fromBlock(64),
+                            QuartPos.fromBlock(locatePos.getZ()), randomState.sampler());
+                    if (!selected.holder().value().biomes().contains(sample)) continue;
                 }
-            }
-
-            int spacing = rssp.spacing();
-            int startI = Math.floorDiv(minChunkX, spacing);
-            int endI = Math.floorDiv(maxChunkX, spacing);
-            int startJ = Math.floorDiv(minChunkZ, spacing);
-            int endJ = Math.floorDiv(maxChunkZ, spacing);
-
-            for (int i = startI; i <= endI; i++) {
-                for (int j = startJ; j <= endJ; j++) {
-                    int baseX = i * spacing;
-                    int baseZ = j * spacing;
-                    ChunkPos candidate = rssp.getPotentialStructureChunk(level.getSeed(), baseX, baseZ);
-                    int x = candidate.x;
-                    int z = candidate.z;
-                    if (x < minChunkX || x > maxChunkX || z < minChunkZ || z > maxChunkZ)
-                        continue;
-                    if (!placement.isStructureChunk(state, x, z))
-                        continue;
-
-                    BlockPos locatePos = placement.getLocatePos(candidate);
-                    int qx = QuartPos.fromBlock(locatePos.getX());
-                    int qy = QuartPos.fromBlock(64);
-                    int qz = QuartPos.fromBlock(locatePos.getZ());
-                    Holder<Biome> sample = biomeSource.getNoiseBiome(qx, qy, qz, randomState.sampler());
-                    if (biomePrefilter && allowedBiomes != null) {
-                        if (!allowedBiomes.contains(sample))
-                            continue;
-                    }
-
-                    String chosenId = labelId;
-                    for (Holder<Structure> h : matchedStructures) {
-                        if (h.value().biomes().contains(sample)) {
-                            chosenId = h.unwrapKey().map(ResourceKey::location).map(ResourceLocation::toString)
-                                    .orElse(labelId);
-                            break;
-                        }
-                    }
-                    result.add(new StructureInfo(locatePos, chosenId));
-                }
+                result.add(new StructureInfo(locatePos, selected.id().toString()));
             }
         }
 
@@ -381,6 +325,40 @@ public final class StructurePredictor {
                 && Level.OVERWORLD.equals(level.dimension())
                 && ConfigService.get().structurePredictionEnabled();
     }
+
+    /** Mirrors Minecraft's structure-set weighted roll before any mod filter is applied. */
+    private static StructureSelection selectStructure(List<StructureSelection> selections, long seed, ChunkPos chunk) {
+        int totalWeight = selections.stream().mapToInt(StructureSelection::weight).sum();
+        if (totalWeight <= 0) return null;
+        WorldgenRandom random = new WorldgenRandom(new LegacyRandomSource(0L));
+        random.setLargeFeatureSeed(seed, chunk.x, chunk.z);
+        int roll = random.nextInt(totalWeight);
+        for (StructureSelection selection : selections) {
+            roll -= selection.weight();
+            if (roll < 0) return selection;
+        }
+        return null;
+    }
+
+    private static List<ChunkPos> potentialChunks(StructurePlacement placement, long seed,
+                                                    int minChunkX, int minChunkZ, int maxChunkX, int maxChunkZ) {
+        if (placement instanceof RandomSpreadStructurePlacement randomSpread) {
+            ArrayList<ChunkPos> out = new ArrayList<>();
+            int spacing = randomSpread.spacing();
+            for (int gridX = Math.floorDiv(minChunkX, spacing); gridX <= Math.floorDiv(maxChunkX, spacing); gridX++) {
+                for (int gridZ = Math.floorDiv(minChunkZ, spacing); gridZ <= Math.floorDiv(maxChunkZ, spacing); gridZ++) {
+                    ChunkPos candidate = randomSpread.getPotentialStructureChunk(seed, gridX * spacing, gridZ * spacing);
+                    if (candidate.x >= minChunkX && candidate.x <= maxChunkX && candidate.z >= minChunkZ && candidate.z <= maxChunkZ) {
+                        out.add(candidate);
+                    }
+                }
+            }
+            return out;
+        }
+        return StructurePlacementAdapters.potentialChunks(placement, seed, minChunkX, minChunkZ, maxChunkX, maxChunkZ);
+    }
+
+    private record StructureSelection(Holder<Structure> holder, ResourceLocation id, int weight) {}
 
     private static final class Filters {
         private final List<String> whitelist;

@@ -15,9 +15,71 @@ import net.shiroha233.roadweaver.planning.RoadPlanningService;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class RoadNetworkApi {
+    private static final CopyOnWriteArrayList<InitialPlanningListener> INITIAL_PLANNING_LISTENERS = new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<InitialPlanningBoundsProvider> INITIAL_PLANNING_BOUNDS_PROVIDERS = new CopyOnWriteArrayList<>();
+
     private RoadNetworkApi() {
+    }
+
+    /** Registers a pure candidate enumerator for an addon-defined placement type. */
+    public static void registerStructurePlacementAdapter(StructurePlacementAdapter adapter) {
+        StructurePlacementAdapters.register(adapter);
+    }
+
+    /** Removes a previously registered placement enumerator. */
+    public static void unregisterStructurePlacementAdapter(StructurePlacementAdapter adapter) {
+        StructurePlacementAdapters.unregister(adapter);
+    }
+
+    /**
+     * Registers an observer of RoadWeaver's initial regional candidate pass.
+     * The observer is called once per fresh overworld startup pass, on the
+     * server thread, before RoadWeaver starts generating its initial roads.
+     */
+    public static void registerInitialPlanningListener(InitialPlanningListener listener) {
+        if (listener != null) INITIAL_PLANNING_LISTENERS.addIfAbsent(listener);
+    }
+
+    public static void unregisterInitialPlanningListener(InitialPlanningListener listener) {
+        INITIAL_PLANNING_LISTENERS.remove(listener);
+    }
+
+    /** Registers a bounded initial-plan domain supplied by a world-layout integration. */
+    public static void registerInitialPlanningBoundsProvider(InitialPlanningBoundsProvider provider) {
+        if (provider != null) INITIAL_PLANNING_BOUNDS_PROVIDERS.addIfAbsent(provider);
+    }
+
+    public static void unregisterInitialPlanningBoundsProvider(InitialPlanningBoundsProvider provider) {
+        INITIAL_PLANNING_BOUNDS_PROVIDERS.remove(provider);
+    }
+
+    /** Returns the first valid optional domain without allowing an addon failure to stop startup. */
+    public static Optional<InitialPlanningBounds> initialPlanningBounds(ServerLevel level) {
+        for (InitialPlanningBoundsProvider provider : INITIAL_PLANNING_BOUNDS_PROVIDERS) {
+            try {
+                Optional<InitialPlanningBounds> bounds = provider.initialBounds(level);
+                if (bounds != null && bounds.isPresent()) return bounds;
+            } catch (RuntimeException ignored) {
+                // A provider is advisory; use the normal configured radius on failure.
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Internal lifecycle hook used by RoadWeaver's initial-generation manager. */
+    public static void notifyInitialStructuresPlanned(ServerLevel level, List<StructureInfo> structures) {
+        List<StructureInfo> snapshot = structures == null ? List.of() : List.copyOf(structures);
+        for (InitialPlanningListener listener : INITIAL_PLANNING_LISTENERS) {
+            try {
+                listener.onInitialStructuresPlanned(level, snapshot);
+            } catch (RuntimeException ignored) {
+                // Optional integrations must never cancel RoadWeaver's plan.
+            }
+        }
     }
 
     public static void registerStructureEndpoint(ServerLevel level, BlockPos pos) {

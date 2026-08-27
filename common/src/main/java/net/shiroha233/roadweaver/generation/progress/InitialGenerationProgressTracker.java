@@ -3,6 +3,7 @@ package net.shiroha233.roadweaver.generation.progress;
 
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.ModConfig;
+import net.shiroha233.roadweaver.config.sub.TerrainSamplingMode;
 import net.shiroha233.roadweaver.pathfinding.cache.AccurateSamplingStats;
 import net.shiroha233.roadweaver.pathfinding.cache.TerrainSamplingStats;
 
@@ -81,8 +82,7 @@ public final class InitialGenerationProgressTracker {
         SAMPLES_PER_SECOND.set(0.0);
         LAST_BATCH_SAMPLES.set(0);
         LAST_BATCH_MILLIS.set(0L);
-        BACKEND.set("-");
-        DEVICE_NAME.set("-");
+        initializeBackendStatus();
         DEVICE_PREFERENCE.set(resolveDevicePreference());
         FALLBACK_REASON.set("");
         CURRENT_OPERATION.set("initializing");
@@ -328,6 +328,30 @@ public final class InitialGenerationProgressTracker {
         } catch (Throwable ignored) {
             return "AUTO";
         }
+    }
+
+    /**
+     * The coarse sampler is CPU based, but it does not publish its first batch
+     * until after the initial-generation overlay has already opened.  Seed the
+     * status with the configured mode so that the overlay never presents a
+     * misleading empty backend during that interval.  Full-region sampling may
+     * still select OpenCL or fall back to CPU, so leave its final identity to
+     * the sampler itself.
+     */
+    private static void initializeBackendStatus() {
+        try {
+            ModConfig config = ConfigService.get();
+            if (config.planning().terrainSamplingMode() == TerrainSamplingMode.FULL_REGION) {
+                BACKEND.set("initializing");
+                DEVICE_NAME.set("-");
+                return;
+            }
+        } catch (Throwable ignored) {
+            // The safe default is the JVM CPU sampler, which is also used when
+            // the optional accelerated path cannot be initialized.
+        }
+        BACKEND.set("CPU");
+        DEVICE_NAME.set("CPU");
     }
 
     private static String safe(String value) {

@@ -91,7 +91,14 @@ public final class RoadPlanningService {
         int maxX = (cx + radiusChunks) * 16;
         int minZ = (cz - radiusChunks) * 16;
         int maxZ = (cz + radiusChunks) * 16;
-        planRect(level, minX, minZ, maxX, maxZ);
+        initialPlan(level, minX, minZ, maxX, maxZ);
+    }
+
+    /** Runs one bounded, synchronous first-pass plan without inventing a player radius. */
+    public static void initialPlan(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
+        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        planRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
+        markInitialRegionTiles(level, minBlockX >> 4, minBlockZ >> 4, maxBlockX >> 4, maxBlockZ >> 4);
     }
 
     public static void planAroundPlayer(ServerPlayer player) {
@@ -122,6 +129,8 @@ public final class RoadPlanningService {
             return;
         }
         if (!markPlanningTile(level, key)) return;
+        LOGGER.info("Queued RoadWeaver regional expansion dimension={} tile=[{},{}] radiusChunks={}.",
+                level.dimension().location(), kx, kz, radiusChunks);
         AutomaticPlanningSamplingActivities.Activity samplingActivity = beginDynamicPlanningSampling(
                 level,
                 minX,
@@ -143,6 +152,8 @@ public final class RoadPlanningService {
                     }
                     markPlannedTile(level, key, pcx, pcz);
                     prunePlannedIfTooLarge(level);
+                    LOGGER.info("Completed RoadWeaver regional expansion dimension={} tile=[{},{}].",
+                            level.dimension().location(), kx, kz);
                 } finally {
                     finishDynamicPlanningSampling(level, samplingActivity);
                 }
@@ -217,6 +228,33 @@ public final class RoadPlanningService {
         Map<Long, Long> centers = new HashMap<>(provider.getPlannedTileCenters(level));
         centers.putIfAbsent(tileKey, (((long) centerChunkX) << 32) ^ (centerChunkZ & 0xffffffffL));
         provider.setPlannedTileKeys(level, set);
+        provider.setPlannedTileCenters(level, centers);
+    }
+
+    /**
+     * The blocking initial pass already covers this whole rectangle. Mark its
+     * dynamic tiles so the first player join does not immediately repeat the
+     * same expensive scan; expansion resumes naturally once a player crosses
+     * the initial boundary.
+     */
+    private static void markInitialRegionTiles(ServerLevel level, int minChunkX, int minChunkZ, int maxChunkX, int maxChunkZ) {
+        int tile = getStrideTileSizeChunks();
+        int minTileX = floorDiv(minChunkX, tile);
+        int maxTileX = floorDiv(maxChunkX, tile);
+        int minTileZ = floorDiv(minChunkZ, tile);
+        int maxTileZ = floorDiv(maxChunkZ, tile);
+        WorldDataProvider provider = WorldDataProvider.getInstance();
+        Set<Long> keys = new HashSet<>(provider.getPlannedTileKeys(level));
+        Map<Long, Long> centers = new HashMap<>(provider.getPlannedTileCenters(level));
+        for (int tileX = minTileX; tileX <= maxTileX; tileX++) {
+            for (int tileZ = minTileZ; tileZ <= maxTileZ; tileZ++) {
+                long key = (((long) tileX) << 32) ^ (tileZ & 0xffffffffL);
+                keys.add(key);
+                centers.putIfAbsent(key, (((long) (tileX * tile + tile / 2)) << 32)
+                        ^ ((tileZ * tile + tile / 2) & 0xffffffffL));
+            }
+        }
+        provider.setPlannedTileKeys(level, keys);
         provider.setPlannedTileCenters(level, centers);
     }
 
@@ -302,7 +340,7 @@ public final class RoadPlanningService {
 
         ModConfig cfg0 = ConfigService.get();
         NetworkPlanner planner = NetworkPlannerFactory.create(cfg0.planning().planningAlgorithm());
-        List<StructureConnection> primaryEdges = planner.plan(points, RoadConstants.DEFAULT_PLAN_MAX_EDGE_LEN_BLOCKS);
+        List<StructureConnection> primaryEdges = planner.plan(points, cfg0.planning().maxConnectionLengthBlocks());
         if (primaryEdges.isEmpty()) return;
 
         WorldDataProvider provider = WorldDataProvider.getInstance();
@@ -324,7 +362,7 @@ public final class RoadPlanningService {
 
         List<StructureConnection> bridges = KNNPlanner.connectComponents(
                 componentPoints, base,
-                RoadConstants.DEFAULT_BRIDGE_JOIN_LEN_BLOCKS,
+                cfg0.planning().maxComponentBridgeLengthBlocks(),
                 RoadConstants.DEFAULT_COMPONENT_MIN_ANGLE_DEG,
                 RoadConstants.DEFAULT_COMPONENT_DEGREE_CAP
         );
@@ -411,7 +449,7 @@ public final class RoadPlanningService {
 
             ModConfig cfg0 = ConfigService.get();
             NetworkPlanner planner = NetworkPlannerFactory.create(cfg0.planning().planningAlgorithm());
-            List<StructureConnection> primaryEdges = planner.plan(points, RoadConstants.DEFAULT_PLAN_MAX_EDGE_LEN_BLOCKS);
+            List<StructureConnection> primaryEdges = planner.plan(points, cfg0.planning().maxConnectionLengthBlocks());
             if (primaryEdges.isEmpty() && existingInRect.isEmpty()) return new PlannedRegionResult(List.of());
 
             ArrayList<StructureConnection> filteredPrimary = new ArrayList<>();
@@ -424,7 +462,7 @@ public final class RoadPlanningService {
             ArrayList<BlockPos> componentPoints = collectComponentPoints(points, existingInRect, filteredPrimary);
             List<StructureConnection> bridges = KNNPlanner.connectComponents(
                     componentPoints, base,
-                    RoadConstants.DEFAULT_BRIDGE_JOIN_LEN_BLOCKS,
+                    cfg0.planning().maxComponentBridgeLengthBlocks(),
                     RoadConstants.DEFAULT_COMPONENT_MIN_ANGLE_DEG,
                     RoadConstants.DEFAULT_COMPONENT_DEGREE_CAP
             );
