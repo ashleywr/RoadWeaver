@@ -10,6 +10,8 @@ import net.shiroha233.roadweaver.client.map.data.MapSnapshotPatch;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
+import net.shiroha233.roadweaver.core.model.MapRouteClass;
 import net.shiroha233.roadweaver.map.search.MapStructureSource;
 
 import java.util.ArrayList;
@@ -39,6 +41,10 @@ public final class MapSnapshotCodec {
             if (has) {
                 buf.writeUtf(name);
             }
+            StructureInfo info = s.structureInfo(p);
+            boolean hasIcon = info != null && info.mapIcon() != null;
+            buf.writeBoolean(hasIcon);
+            if (hasIcon) info.mapIcon().write(buf);
             buf.writeVarInt(s.structureSource(p) + 1);
         }
         
@@ -48,6 +54,8 @@ public final class MapSnapshotCodec {
             buf.writeBlockPos(c.to());
             buf.writeVarInt(c.status().ordinal());
         }
+
+        writePlannedMapRoutes(buf, s.plannedMapRoutes());
         
         List<List<BlockPos>> roads = s.roadPolylines();
         buf.writeVarInt(roads.size());
@@ -72,7 +80,14 @@ public final class MapSnapshotCodec {
             boolean has = buf.readBoolean();
             if (has) {
                 String id = buf.readUtf(256);
-                infos.add(new StructureInfo(structures.get(i), id));
+                boolean hasIcon = buf.readBoolean();
+                infos.add(new StructureInfo(structures.get(i), id,
+                        hasIcon ? net.shiroha233.roadweaver.core.model.MapLocationIcon.read(buf) : null));
+            } else {
+                // No identity cannot have presentation metadata, but preserve
+                // the wire shape for a future unknown endpoint.
+                boolean hasIcon = buf.readBoolean();
+                if (hasIcon) net.shiroha233.roadweaver.core.model.MapLocationIcon.read(buf);
             }
             sourceBuilder.put(structures.get(i), buf.readVarInt() - 1);
         }
@@ -87,6 +102,7 @@ public final class MapSnapshotCodec {
             ConnectionStatus st = ord >= 0 && ord < statuses.length ? statuses[ord] : ConnectionStatus.FAILED;
             conns.add(new StructureConnection(a, b, st));
         }
+        List<PlannedMapRoute> plannedMapRoutes = readPlannedMapRoutes(buf, "planned map routes");
         
         int rp = readCount(buf, 4096, "road polylines");
         List<List<BlockPos>> roads = new ArrayList<>(rp);
@@ -101,7 +117,7 @@ public final class MapSnapshotCodec {
             roads.add(poly);
         }
 
-        return new MapSnapshot(structures, conns, infos, roads, sourceBuilder);
+        return new MapSnapshot(structures, conns, infos, roads, sourceBuilder, plannedMapRoutes);
     }
 
     public static void writePatch(FriendlyByteBuf buf, MapSnapshotPatch patch) {
@@ -113,6 +129,9 @@ public final class MapSnapshotCodec {
             String id = info.structureId();
             buf.writeBoolean(id != null);
             if (id != null) buf.writeUtf(id);
+            boolean hasIcon = info.mapIcon() != null;
+            buf.writeBoolean(hasIcon);
+            if (hasIcon) info.mapIcon().write(buf);
             buf.writeVarInt(patch.structureSources().getOrDefault(info.pos(), MapStructureSource.UNKNOWN.id()) + 1);
         }
 
@@ -122,6 +141,8 @@ public final class MapSnapshotCodec {
             buf.writeBlockPos(connection.to());
             buf.writeVarInt(connection.status().ordinal());
         }
+
+        writePlannedMapRoutes(buf, patch.plannedMapRoutes());
 
         buf.writeVarInt(patch.roads().size());
         for (MapSnapshotPatch.RoadPolylinePatch road : patch.roads()) {
@@ -151,7 +172,9 @@ public final class MapSnapshotCodec {
             BlockPos pos = buf.readBlockPos();
             boolean hasId = buf.readBoolean();
             String id = hasId ? buf.readUtf(256) : "unknown";
-            structures.add(new StructureInfo(pos, id));
+            boolean hasIcon = buf.readBoolean();
+            structures.add(new StructureInfo(pos, id,
+                    hasIcon ? net.shiroha233.roadweaver.core.model.MapLocationIcon.read(buf) : null));
             structureSources.put(pos, buf.readVarInt() - 1);
         }
 
@@ -166,6 +189,7 @@ public final class MapSnapshotCodec {
             ConnectionStatus status = statuses[ordinal];
             connections.add(new StructureConnection(from, to, status));
         }
+        List<PlannedMapRoute> plannedMapRoutes = readPlannedMapRoutes(buf, "patch planned map routes");
 
         int rc = readCount(buf, 4096, "patch roads");
         List<MapSnapshotPatch.RoadPolylinePatch> roads = new ArrayList<>(rc);
@@ -194,7 +218,33 @@ public final class MapSnapshotCodec {
                     new MapViewportController.RequestRect(minX, minZ, maxX, maxZ)));
         }
 
-        return new MapSnapshotPatch(structures, structureSources, connections, roads, loadedRects);
+        return new MapSnapshotPatch(structures, structureSources, connections, plannedMapRoutes, roads, loadedRects);
+    }
+
+    private static void writePlannedMapRoutes(FriendlyByteBuf buf, List<PlannedMapRoute> routes) {
+        List<PlannedMapRoute> safeRoutes = routes == null ? List.of() : routes;
+        buf.writeVarInt(safeRoutes.size());
+        for (PlannedMapRoute route : safeRoutes) {
+            buf.writeBlockPos(route.from());
+            buf.writeBlockPos(route.to());
+            buf.writeVarInt(route.routeClass().ordinal());
+            buf.writeUtf(route.label(), 160);
+        }
+    }
+
+    private static List<PlannedMapRoute> readPlannedMapRoutes(FriendlyByteBuf buf, String label) {
+        int count = readCount(buf, 4096, label);
+        List<PlannedMapRoute> routes = new ArrayList<>(count);
+        MapRouteClass[] classes = MapRouteClass.values();
+        for (int index = 0; index < count; index++) {
+            BlockPos from = buf.readBlockPos();
+            BlockPos to = buf.readBlockPos();
+            int ordinal = buf.readVarInt();
+            MapRouteClass routeClass = ordinal >= 0 && ordinal < classes.length
+                    ? classes[ordinal] : MapRouteClass.ROAD;
+            routes.add(new PlannedMapRoute(from, to, routeClass, buf.readUtf(160)));
+        }
+        return routes;
     }
 
     private static int readCount(FriendlyByteBuf buf, int max, String label) {

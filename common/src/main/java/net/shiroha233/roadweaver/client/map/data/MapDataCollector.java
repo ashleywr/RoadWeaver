@@ -5,10 +5,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 地图快照装配器。
@@ -25,8 +27,11 @@ public final class MapDataCollector {
     public static MapSnapshot build(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
         MapStructureCollector.Result structureResult = MapStructureCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
         List<StructureConnection> connections = MapConnectionCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
-        List<List<BlockPos>> roads = MapRoadCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
-        return composeSnapshot(structureResult, connections, roads);
+        List<PlannedMapRoute> mapRoutes = MapRouteCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
+        List<List<BlockPos>> roads = MapRoadCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, mapRoutes);
+        return composeSnapshot(structureResult,
+                MapRoutePresentationFilter.withoutConnectionsRepresentedByMapRoutes(connections, mapRoutes),
+                mapRoutes, roads);
     }
 
     public static MapSnapshot buildStructuresSnapshot(ServerLevel level,
@@ -59,11 +64,15 @@ public final class MapDataCollector {
                                                         int maxBlockX,
                                                         int maxBlockZ) {
         List<StructureConnection> connections = MapConnectionCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
-        return new MapSnapshot(List.of(), limitList(connections, MAX_SNAPSHOT_CONNECTIONS), List.of(), List.of());
+        List<PlannedMapRoute> mapRoutes = MapRouteCollector.collect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
+        return new MapSnapshot(List.of(), limitList(
+                MapRoutePresentationFilter.withoutConnectionsRepresentedByMapRoutes(connections, mapRoutes),
+                MAX_SNAPSHOT_CONNECTIONS), List.of(), List.of(), Map.of(), mapRoutes);
     }
 
     private static MapSnapshot composeSnapshot(MapStructureCollector.Result structureResult,
                                                List<StructureConnection> connections,
+                                               List<PlannedMapRoute> mapRoutes,
                                                List<List<BlockPos>> roads) {
         List<BlockPos> structures = limitList(structureResult.structures(), MAX_SNAPSHOT_STRUCTURES);
         return new MapSnapshot(
@@ -71,7 +80,8 @@ public final class MapDataCollector {
                 limitList(connections, MAX_SNAPSHOT_CONNECTIONS),
                 matchingStructureInfos(structures, structureResult.infos()),
                 limitRoadPolylines(roads),
-                structureResult.sources());
+                structureResult.sources(),
+                mapRoutes);
     }
 
     private static List<StructureInfo> matchingStructureInfos(List<BlockPos> structures, List<StructureInfo> infos) {

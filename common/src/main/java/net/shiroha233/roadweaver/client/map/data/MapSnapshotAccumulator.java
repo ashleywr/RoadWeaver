@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
 import net.shiroha233.roadweaver.map.search.MapStructureSource;
 
 import java.util.ArrayList;
@@ -16,27 +17,31 @@ import java.util.Map;
  */
 public final class MapSnapshotAccumulator {
     private final LinkedHashMap<Long, BlockPos> structuresByPos = new LinkedHashMap<>();
-    private final LinkedHashMap<Long, String> structureNamesByPos = new LinkedHashMap<>();
+    private final LinkedHashMap<Long, StructureInfo> structureInfosByPos = new LinkedHashMap<>();
     private final LinkedHashMap<Long, Integer> structureSourcesByPos = new LinkedHashMap<>();
     private final LinkedHashMap<ConnectionKey, StructureConnection> connectionsByKey = new LinkedHashMap<>();
+    private final LinkedHashMap<ConnectionKey, PlannedMapRoute> plannedMapRoutesByKey = new LinkedHashMap<>();
     private final LinkedHashMap<Long, List<BlockPos>> roadsByKey = new LinkedHashMap<>();
 
     public void merge(MapSnapshot snapshot) {
         if (snapshot == null) return;
         mergeStructures(snapshot);
         mergeConnections(snapshot.connections());
+        mergePlannedMapRoutes(snapshot.plannedMapRoutes());
         mergeRoads(snapshot.roadPolylines());
     }
 
     public MapSnapshot snapshot() {
         ArrayList<BlockPos> structures = new ArrayList<>(structuresByPos.values());
         ArrayList<StructureConnection> connections = new ArrayList<>(connectionsByKey.values());
-        ArrayList<StructureInfo> infos = new ArrayList<>(structureNamesByPos.size());
+        ArrayList<PlannedMapRoute> plannedMapRoutes = new ArrayList<>(plannedMapRoutesByKey.values());
+        ArrayList<StructureInfo> infos = new ArrayList<>(structureInfosByPos.size());
         java.util.Map<BlockPos, Integer> sources = new java.util.HashMap<>();
-        for (Map.Entry<Long, String> entry : structureNamesByPos.entrySet()) {
+        for (Map.Entry<Long, StructureInfo> entry : structureInfosByPos.entrySet()) {
             BlockPos pos = structuresByPos.get(entry.getKey());
-            if (pos != null && entry.getValue() != null && !entry.getValue().isBlank()) {
-                infos.add(new StructureInfo(pos, entry.getValue()));
+            StructureInfo info = entry.getValue();
+            if (pos != null && info != null && !info.structureId().isBlank()) {
+                infos.add(new StructureInfo(pos, info.structureId(), info.mapIcon()));
             }
         }
         for (Map.Entry<Long, BlockPos> entry : structuresByPos.entrySet()) {
@@ -44,7 +49,7 @@ public final class MapSnapshotAccumulator {
             if (source != null) sources.put(entry.getValue(), source);
         }
         ArrayList<List<BlockPos>> roads = new ArrayList<>(roadsByKey.values());
-        return new MapSnapshot(structures, connections, infos, roads, sources);
+        return new MapSnapshot(structures, connections, infos, roads, sources, plannedMapRoutes);
     }
 
     private void mergeStructures(MapSnapshot snapshot) {
@@ -53,17 +58,16 @@ public final class MapSnapshotAccumulator {
             long key = posKey(pos);
             structuresByPos.putIfAbsent(key, normalize(pos));
             structureSourcesByPos.putIfAbsent(key, snapshot.structureSource(pos));
-            String name = snapshot.structureName(pos);
-            mergeStructureName(key, name);
+            mergeStructureInfo(key, snapshot.structureInfo(pos));
         }
     }
 
-    private void mergeStructureName(long key, String name) {
-        if (name == null || name.isBlank()) return;
-        String previous = structureNamesByPos.get(key);
-        if (previous == null || previous.isBlank()
-                || (!StructureInfo.isKnownId(previous) && StructureInfo.isKnownId(name))) {
-            structureNamesByPos.put(key, name);
+    private void mergeStructureInfo(long key, StructureInfo next) {
+        if (next == null || next.structureId() == null || next.structureId().isBlank()) return;
+        StructureInfo previous = structureInfosByPos.get(key);
+        if (previous == null || !StructureInfo.isKnownId(previous.structureId())
+                || (next.mapIcon() != null && previous.mapIcon() == null)) {
+            structureInfosByPos.put(key, new StructureInfo(structuresByPos.get(key), next.structureId(), next.mapIcon()));
         }
     }
 
@@ -77,6 +81,14 @@ public final class MapSnapshotAccumulator {
             if (previous == null || statusPriority(normalized.status()) >= statusPriority(previous.status())) {
                 connectionsByKey.put(key, normalized);
             }
+        }
+    }
+
+    private void mergePlannedMapRoutes(List<PlannedMapRoute> routes) {
+        if (routes == null || routes.isEmpty()) return;
+        for (PlannedMapRoute route : routes) {
+            if (route == null) continue;
+            plannedMapRoutesByKey.put(ConnectionKey.of(route.from(), route.to()), route);
         }
     }
 
@@ -133,6 +145,12 @@ public final class MapSnapshotAccumulator {
             long from = posKey(connection.from());
             long to = posKey(connection.to());
             return from <= to ? new ConnectionKey(from, to) : new ConnectionKey(to, from);
+        }
+
+        private static ConnectionKey of(BlockPos from, BlockPos to) {
+            long a = posKey(from);
+            long b = posKey(to);
+            return a <= b ? new ConnectionKey(a, b) : new ConnectionKey(b, a);
         }
     }
 }

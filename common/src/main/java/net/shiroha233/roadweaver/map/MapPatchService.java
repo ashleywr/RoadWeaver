@@ -9,6 +9,7 @@ import net.shiroha233.roadweaver.core.model.RoadData;
 import net.shiroha233.roadweaver.core.model.RoadSegmentPlacement;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
 import net.shiroha233.roadweaver.network.ServerMapPatchBridge;
 import net.shiroha233.roadweaver.persistence.files.StructureFileStorage;
 import net.shiroha233.roadweaver.persistence.sharded.RoadShardStorage;
@@ -34,6 +35,7 @@ public final class MapPatchService {
                 collectSources(level, endpointInfos),
                 List.of(normalize(connection)),
                 List.of(),
+                List.of(),
                 List.of());
         broadcast(level, patch);
     }
@@ -43,15 +45,20 @@ public final class MapPatchService {
         ArrayList<StructureInfo> normalized = new ArrayList<>(structures.size());
         for (StructureInfo info : structures) {
             if (info == null || info.pos() == null || !StructureInfo.isKnownId(info.structureId())) continue;
-            normalized.add(new StructureInfo(normalize(info.pos()), info.structureId()));
+            normalized.add(new StructureInfo(normalize(info.pos()), info.structureId(), info.mapIcon()));
         }
         if (normalized.isEmpty()) return;
-        broadcast(level, new MapSnapshotPatch(normalized, collectSources(level, normalized), List.of(), List.of(), List.of()));
+        broadcast(level, new MapSnapshotPatch(normalized, collectSources(level, normalized), List.of(), List.of(), List.of(), List.of()));
     }
 
     public static void publishConnectionStatus(ServerLevel level, StructureConnection connection, ConnectionStatus status) {
         if (connection == null || status == null) return;
         publishConnection(level, new StructureConnection(connection.from(), connection.to(), status));
+    }
+
+    public static void publishPlannedMapRoute(ServerLevel level, PlannedMapRoute route) {
+        if (!isOverworld(level) || route == null) return;
+        broadcast(level, new MapSnapshotPatch(List.of(), Map.of(), List.of(), List.of(route), List.of(), List.of()));
     }
 
     public static void publishRoadForConnectionAsync(ServerLevel level, StructureConnection connection) {
@@ -89,7 +96,7 @@ public final class MapPatchService {
             }
         }
         if (roadPatches.isEmpty()) return MapSnapshotPatch.empty();
-        return new MapSnapshotPatch(List.of(), Map.of(), List.of(), roadPatches, List.of());
+        return new MapSnapshotPatch(List.of(), Map.of(), List.of(), List.of(), roadPatches, List.of());
     }
 
     private static List<BlockPos> toPolyline(RoadData road) {
@@ -118,7 +125,7 @@ public final class MapPatchService {
         int z = endpoint.getZ();
         for (StructureInfo info : StructureFileStorage.queryRect(level, x, z, x, z)) {
             if (info == null || info.pos() == null || !StructureInfo.isKnownId(info.structureId())) continue;
-            out.add(new StructureInfo(new BlockPos(x, 0, z), info.structureId()));
+            out.add(new StructureInfo(new BlockPos(x, 0, z), info.structureId(), info.mapIcon()));
             return;
         }
     }

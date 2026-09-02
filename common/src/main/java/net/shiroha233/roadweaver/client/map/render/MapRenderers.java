@@ -8,6 +8,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 
 import net.shiroha233.roadweaver.core.model.StructureConnection;
+import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
+import net.shiroha233.roadweaver.core.model.MapRouteClass;
 
 import java.util.List;
 import java.util.function.Function;
@@ -34,7 +37,7 @@ public final class MapRenderers {
     public static void renderStructures(GuiGraphics g,
                                         Font font,
                                         List<BlockPos> points,
-                                        Function<BlockPos, String> structureIdResolver,
+                                        Function<BlockPos, StructureInfo> structureInfoResolver,
                                         IntUnaryOperator toScreenX,
                                         IntUnaryOperator toScreenY,
                                         java.util.function.BiPredicate<Integer, Integer> isInViewWorld,
@@ -46,8 +49,8 @@ public final class MapRenderers {
             if (!isInViewWorld.test(bx, bz)) continue;
             int x = toScreenX.applyAsInt(bx);
             int y = toScreenY.applyAsInt(bz);
-            String structureId = structureIdResolver != null ? structureIdResolver.apply(p) : null;
-            StructureIconRenderer.render(g, font, structureId, x, y, Math.max(10, size + 2), left, top, right, bottom);
+            StructureInfo info = structureInfoResolver != null ? structureInfoResolver.apply(p) : null;
+            StructureIconRenderer.render(g, font, info, x, y, Math.max(10, size + 2), left, top, right, bottom);
         }
     }
 
@@ -82,6 +85,43 @@ public final class MapRenderers {
                 case FAILED -> {
                     RenderUtils.drawThickLine(g, x1, y1, x2, y2, colorFailed, thickness, left, top, right, bottom);
                 }
+            }
+        }
+    }
+
+    /** Draws authored map-only links without changing any generated road. */
+    public static void renderPlannedMapRoutes(GuiGraphics g,
+                                              List<PlannedMapRoute> routes,
+                                              SegmentInView segmentInView,
+                                              IntUnaryOperator toScreenX,
+                                              IntUnaryOperator toScreenY,
+                                              int thickness,
+                                              int trailColor,
+                                              int roadColor,
+                                              int streetColor,
+                                              int left, int top, int right, int bottom) {
+        if (routes == null || routes.isEmpty()) return;
+        for (PlannedMapRoute route : routes) {
+            if (route == null || route.from() == null || route.to() == null) continue;
+            int fromX = route.from().getX();
+            int fromZ = route.from().getZ();
+            int toX = route.to().getX();
+            int toZ = route.to().getZ();
+            if (!segmentInView.test(fromX, fromZ, toX, toZ)) continue;
+            int x1 = toScreenX.applyAsInt(fromX);
+            int y1 = toScreenY.applyAsInt(fromZ);
+            int x2 = toScreenX.applyAsInt(toX);
+            int y2 = toScreenY.applyAsInt(toZ);
+            MapRouteClass routeClass = route.routeClass();
+            if (routeClass == MapRouteClass.TRAIL) {
+                RenderUtils.drawThickDashedLine(g, x1, y1, x2, y2, trailColor,
+                        Math.max(1, thickness - 1), 2, 5, left, top, right, bottom);
+            } else if (routeClass == MapRouteClass.STREET) {
+                RenderUtils.drawThickDashedLine(g, x1, y1, x2, y2, streetColor,
+                        Math.max(1, thickness - 1), 5, 3, left, top, right, bottom);
+            } else {
+                RenderUtils.drawThickLine(g, x1, y1, x2, y2, roadColor,
+                        Math.max(1, thickness), left, top, right, bottom);
             }
         }
     }

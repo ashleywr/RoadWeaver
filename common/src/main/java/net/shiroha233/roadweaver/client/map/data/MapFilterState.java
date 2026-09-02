@@ -99,8 +99,8 @@ public final class MapFilterState {
                     || !acceptsSource(snapshot.structureSourceType(pos))) continue;
             structures.add(pos);
             visibleStructureKeys.add(key);
-            String name = snapshot.structureName(pos);
-            if (name != null) infos.add(new StructureInfo(pos, name));
+            StructureInfo info = snapshot.structureInfo(pos);
+            if (info != null) infos.add(new StructureInfo(pos, info.structureId(), info.mapIcon()));
             sourceMap.put(pos, snapshot.structureSource(pos));
         }
         List<StructureConnection> connections = snapshot.connections().stream()
@@ -111,7 +111,7 @@ public final class MapFilterState {
         List<List<BlockPos>> roads = acceptsStatus(ConnectionStatus.COMPLETED)
                 ? snapshot.roadPolylines()
                 : List.of();
-        return new MapSnapshot(structures, connections, infos, roads, sourceMap);
+        return new MapSnapshot(structures, connections, infos, roads, sourceMap, snapshot.plannedMapRoutes());
     }
 
     private static <E extends Enum<E>> void toggle(EnumSet<E> values, E value, int allCount) {

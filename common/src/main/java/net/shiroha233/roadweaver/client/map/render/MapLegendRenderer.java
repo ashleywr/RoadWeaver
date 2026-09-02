@@ -6,9 +6,13 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.shiroha233.roadweaver.client.map.MapTheme;
 import net.shiroha233.roadweaver.client.map.data.MapSnapshot;
+import net.shiroha233.roadweaver.core.model.MapRouteClass;
 
 public final class MapLegendRenderer {
     private static final int SCREEN_MARGIN = MapTheme.HUD_TOP_MARGIN;
+    // Vanilla/mod toasts occupy the very top-right corner. Leave that lane
+    // clear so the route hierarchy remains readable immediately after join.
+    private static final int TOP_TOAST_CLEARANCE = 36;
     private static final int PADDING_X = 9;
     private static final int PADDING_Y = 7;
     private static final int ROW_STEP = 13;
@@ -30,7 +34,7 @@ public final class MapLegendRenderer {
         int width = clampWidth(width(font, entries), screenWidth);
         int height = PADDING_Y * 2 + entries.length * ROW_STEP - ROW_GAP;
         int x = Math.max(0, screenWidth - SCREEN_MARGIN - width);
-        int y = SCREEN_MARGIN;
+        int y = SCREEN_MARGIN + TOP_TOAST_CLEARANCE;
         renderSurface(graphics, x, y, width, height);
 
         int rowY = y + PADDING_Y;
@@ -81,7 +85,13 @@ public final class MapLegendRenderer {
                 new LegendEntry(label("completed"),
                         snapshot.completedCount(), MapTheme.COLOR_COMPLETED, false, false),
                 new LegendEntry(label("failed"),
-                        snapshot.failedCount(), MapTheme.COLOR_FAILED, false, false)
+                        snapshot.failedCount(), MapTheme.COLOR_FAILED, false, false),
+                new LegendEntry(label("trails"),
+                        snapshot.plannedMapRouteCount(MapRouteClass.TRAIL), MapTheme.COLOR_ROUTE_TRAIL, false, true),
+                new LegendEntry(label("roads"),
+                        snapshot.plannedMapRouteCount(MapRouteClass.ROAD), MapTheme.COLOR_ROUTE_ROAD, false, false),
+                new LegendEntry(label("streets"),
+                        snapshot.plannedMapRouteCount(MapRouteClass.STREET), MapTheme.COLOR_ROUTE_STREET, false, true)
         };
     }
 

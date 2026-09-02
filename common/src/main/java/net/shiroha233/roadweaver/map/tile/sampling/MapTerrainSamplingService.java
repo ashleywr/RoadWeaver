@@ -6,6 +6,7 @@ import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.sub.TerrainSamplingMode;
 import net.shiroha233.roadweaver.core.constants.RoadConstants;
 import net.shiroha233.roadweaver.map.tile.storage.AccurateTerrainMapFingerprintGuard;
+import net.shiroha233.roadweaver.map.tile.storage.MapAppearanceTileCacheGuard;
 import net.shiroha233.roadweaver.pathfinding.cache.AccurateSamplingProgress;
 import net.shiroha233.roadweaver.pathfinding.cache.TerrainSamplingCache;
 import net.shiroha233.roadweaver.pathfinding.terrain.region.AccurateRegionBounds;
@@ -40,6 +41,8 @@ public final class MapTerrainSamplingService {
     private static final int TERRAIN_SAMPLING_PERCENT = 70;
     private static final int STRUCTURE_QUERY_PERCENT = 10;
     private static final int PNG_WRITING_PERCENT = 100 - TERRAIN_SAMPLING_PERCENT - STRUCTURE_QUERY_PERCENT;
+    private static final int OVERVIEW_THRESHOLD_BLOCKS = 8_192;
+    private static final int OVERVIEW_STEP_BLOCKS = 256;
 
     private final AtomicReference<MapSamplingSnapshot> snapshot =
             new AtomicReference<>(MapSamplingSnapshot.idle());
@@ -106,6 +109,13 @@ public final class MapTerrainSamplingService {
         int step = Math.max(
                 RoadConstants.ASTAR_STEP_MIN,
                 ConfigService.get().pathfindingCost().effectiveAStarStep());
+        // Map resampling is not road planning. At continent scale a 256-block
+        // representative sample preserves coastlines and biome regions while
+        // keeping the operation bounded; its cache key is separate by step.
+        if (Math.max(requestedBounds.maxX() - requestedBounds.minX(),
+                requestedBounds.maxZ() - requestedBounds.minZ()) >= OVERVIEW_THRESHOLD_BLOCKS) {
+            step = Math.max(step, OVERVIEW_STEP_BLOCKS);
+        }
         return switch (mode) {
             case FULL_REGION -> createAccuratePlan(requestedBounds, step, mode);
             case LEGACY_DIRECT, COARSE_CORRIDOR -> createCoarsePlan(
@@ -174,6 +184,7 @@ public final class MapTerrainSamplingService {
                               long epoch) {
         CoarseTerrainRegion region = null;
         try {
+            MapAppearanceTileCacheGuard.ensure(level);
             CoarseRegionBounds bounds = plan.bounds();
             region = CoarseTerrainRegionSampler.sample(
                     level,
@@ -195,6 +206,7 @@ public final class MapTerrainSamplingService {
         TerrainSamplingCache cache = new TerrainSamplingCache();
         AccurateTerrainRegion region = null;
         try {
+            MapAppearanceTileCacheGuard.ensure(level);
             AccurateTerrainMapFingerprintGuard.ensure(level);
             AccurateRegionBounds bounds = plan.bounds();
             region = AccurateTerrainRegionSampler.sampleForMap(

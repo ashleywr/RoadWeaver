@@ -86,13 +86,17 @@ public final class MapStructureCollector {
         long key = (((long) x) << 32) ^ (z & 0xffffffffL);
         StructureInfo prev = out.get(key);
         if (prev == null) {
-            out.put(key, new StructureInfo(new BlockPos(x, 0, z), info.structureId()));
+            out.put(key, new StructureInfo(new BlockPos(x, 0, z), info.structureId(), info.mapIcon()));
             return;
         }
         String prevId = prev.structureId();
         String nextId = info.structureId();
-        if (!StructureInfo.isKnownId(prevId) && StructureInfo.isKnownId(nextId)) {
-            out.put(key, new StructureInfo(new BlockPos(x, 0, z), nextId));
+        boolean replaceIdentity = !StructureInfo.isKnownId(prevId) && StructureInfo.isKnownId(nextId);
+        boolean enrichIcon = prev.mapIcon() == null && info.mapIcon() != null;
+        if (replaceIdentity || enrichIcon) {
+            String id = replaceIdentity ? nextId : prevId;
+            out.put(key, new StructureInfo(new BlockPos(x, 0, z), id,
+                    info.mapIcon() != null ? info.mapIcon() : prev.mapIcon()));
         }
     }
 

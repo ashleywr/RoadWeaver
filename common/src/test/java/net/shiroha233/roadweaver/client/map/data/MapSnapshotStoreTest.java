@@ -5,6 +5,8 @@ import net.minecraft.core.BlockPos;
 import net.shiroha233.roadweaver.client.map.MapLoadPhase;
 import net.shiroha233.roadweaver.client.map.MapViewportController;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.MapRouteClass;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +15,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MapSnapshotStoreTest {
+    @Test
+    void plannedMapRouteContributesBoundsWithoutCreatingAWorldRoad() {
+        PlannedMapRoute route = new PlannedMapRoute(
+                new BlockPos(-100, 72, 40), new BlockPos(300, 12, -60), MapRouteClass.TRAIL, "ridge trail");
+
+        MapSnapshot snapshot = new MapSnapshot(List.of(), List.of(), List.of(), List.of(), java.util.Map.of(), List.of(route));
+
+        assertEquals(List.of(route), snapshot.plannedMapRoutes());
+        assertEquals(1, snapshot.plannedMapRouteCount(MapRouteClass.TRAIL));
+        assertEquals(0, snapshot.plannedMapRouteCount(MapRouteClass.ROAD));
+        assertEquals(-100, snapshot.minX());
+        assertEquals(-60, snapshot.minZ());
+        assertEquals(300, snapshot.maxX());
+        assertEquals(40, snapshot.maxZ());
+    }
+
     @Test
     void clearingSampledStructureRectAllowsASecondLoad() {
         MapSnapshotStore store = new MapSnapshotStore();

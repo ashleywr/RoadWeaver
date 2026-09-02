@@ -4,6 +4,8 @@ import net.minecraft.core.BlockPos;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
+import net.shiroha233.roadweaver.core.model.MapRouteClass;
 import net.shiroha233.roadweaver.map.search.MapStructureSource;
 
 import java.util.ArrayList;
@@ -18,7 +20,8 @@ import java.util.Map;
 public class MapSnapshot {
     private final List<BlockPos> structures;
     private final List<StructureConnection> connections;
-    private final Map<BlockPos, String> structureNames;
+    private final List<PlannedMapRoute> plannedMapRoutes;
+    private final Map<BlockPos, StructureInfo> structureInfosByPos;
     private final Map<BlockPos, Integer> structureSources;
     private final List<List<BlockPos>> roadPolylines;
 
@@ -31,7 +34,7 @@ public class MapSnapshot {
                        List<StructureConnection> connections,
                        List<StructureInfo> structureInfos,
                        List<List<BlockPos>> roadPolylines) {
-        this(structures, connections, structureInfos, roadPolylines, Map.of());
+        this(structures, connections, structureInfos, roadPolylines, Map.of(), List.of());
     }
 
     public MapSnapshot(List<BlockPos> structures,
@@ -39,17 +42,28 @@ public class MapSnapshot {
                        List<StructureInfo> structureInfos,
                        List<List<BlockPos>> roadPolylines,
                        Map<BlockPos, Integer> structureSources) {
+        this(structures, connections, structureInfos, roadPolylines, structureSources, List.of());
+    }
+
+    public MapSnapshot(List<BlockPos> structures,
+                       List<StructureConnection> connections,
+                       List<StructureInfo> structureInfos,
+                       List<List<BlockPos>> roadPolylines,
+                       Map<BlockPos, Integer> structureSources,
+                       List<PlannedMapRoute> plannedMapRoutes) {
         this.structures = Collections.unmodifiableList(new ArrayList<>(structures != null ? structures : List.of()));
         this.connections = Collections.unmodifiableList(new ArrayList<>(connections != null ? connections : List.of()));
-        Map<BlockPos, String> nm = new HashMap<>();
+        this.plannedMapRoutes = Collections.unmodifiableList(new ArrayList<>(plannedMapRoutes != null ? plannedMapRoutes : List.of()));
+        Map<BlockPos, StructureInfo> infoByPos = new HashMap<>();
         if (structureInfos != null) {
             for (StructureInfo info : structureInfos) {
                 if (info != null && info.pos() != null) {
-                    nm.put(normalize(info.pos()), info.structureId());
+                    BlockPos normalized = normalize(info.pos());
+                    infoByPos.put(normalized, new StructureInfo(normalized, info.structureId(), info.mapIcon()));
                 }
             }
         }
-        this.structureNames = Collections.unmodifiableMap(nm);
+        this.structureInfosByPos = Collections.unmodifiableMap(infoByPos);
         Map<BlockPos, Integer> src = new HashMap<>();
         if (structureSources != null) {
             for (Map.Entry<BlockPos, Integer> entry : structureSources.entrySet()) {
@@ -86,6 +100,15 @@ public class MapSnapshot {
             if (b.getX() > maxX) maxX = b.getX();
             if (b.getZ() > maxZ) maxZ = b.getZ();
         }
+        for (PlannedMapRoute route : this.plannedMapRoutes) {
+            if (route == null) continue;
+            BlockPos a = route.from();
+            BlockPos b = route.to();
+            minX = Math.min(minX, Math.min(a.getX(), b.getX()));
+            minZ = Math.min(minZ, Math.min(a.getZ(), b.getZ()));
+            maxX = Math.max(maxX, Math.max(a.getX(), b.getX()));
+            maxZ = Math.max(maxZ, Math.max(a.getZ(), b.getZ()));
+        }
         for (List<BlockPos> pl : this.roadPolylines) {
             for (BlockPos p : pl) {
                 if (p.getX() < minX) minX = p.getX();
@@ -106,7 +129,12 @@ public class MapSnapshot {
 
     public List<BlockPos> structures() { return structures; }
     public List<StructureConnection> connections() { return connections; }
-    public String structureName(BlockPos pos) { return structureNames.get(normalize(pos)); }
+    public List<PlannedMapRoute> plannedMapRoutes() { return plannedMapRoutes; }
+    public StructureInfo structureInfo(BlockPos pos) { return structureInfosByPos.get(normalize(pos)); }
+    public String structureName(BlockPos pos) {
+        StructureInfo info = structureInfo(pos);
+        return info == null ? null : info.structureId();
+    }
     public int structureSource(BlockPos pos) {
         return structureSources.getOrDefault(normalize(pos), MapStructureSource.UNKNOWN.id());
     }
@@ -133,6 +161,10 @@ public class MapSnapshot {
     }
     public int failedCount() {
         return (int) connections.stream().filter(c -> c.status() == ConnectionStatus.FAILED).count();
+    }
+    public int plannedMapRouteCount(MapRouteClass routeClass) {
+        if (routeClass == null) return 0;
+        return (int) plannedMapRoutes.stream().filter(route -> route != null && route.routeClass() == routeClass).count();
     }
 
     public static MapSnapshot empty() {

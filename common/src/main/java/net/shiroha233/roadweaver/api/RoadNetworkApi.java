@@ -7,7 +7,11 @@ import net.minecraft.resources.ResourceKey;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.MapLocationIcon;
+import net.shiroha233.roadweaver.core.model.MapRouteClass;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
 import net.shiroha233.roadweaver.core.model.StructureLocationData;
+import net.shiroha233.roadweaver.map.MapPatchService;
 import net.shiroha233.roadweaver.generation.RoadGenerationService;
 import net.shiroha233.roadweaver.map.MapPatchService;
 import net.shiroha233.roadweaver.persistence.WorldDataProvider;
@@ -147,7 +151,13 @@ public final class RoadNetworkApi {
 
     public static void registerStructureEndpoint(ServerLevel level, BlockPos pos, String structureId,
             boolean autoConnect) {
-        if (level == null || pos == null || !Level.OVERWORLD.equals(level.dimension()))
+        registerStructureEndpoint(level, pos, structureId, null, autoConnect);
+    }
+
+    /** Registers an endpoint with optional, durable map-only presentation metadata. */
+    public static void registerStructureEndpoint(ServerLevel level, BlockPos pos, String structureId,
+            MapLocationIcon mapIcon, boolean autoConnect) {
+        if (!RoadGenerationDimensions.isEnabled(level) || pos == null)
             return;
         WorldDataProvider provider = WorldDataProvider.getInstance();
         StructureLocationData existing = provider.getStructureLocations(level);
@@ -157,7 +167,7 @@ public final class RoadNetworkApi {
                 : new ArrayList<>();
 
         if (structureId != null && !structureId.isEmpty()) {
-            StructureInfo info = new StructureInfo(pos, structureId);
+            StructureInfo info = new StructureInfo(pos, structureId, mapIcon);
             infos.add(info);
             if (!locations.contains(pos)) {
                 locations.add(pos);
@@ -174,9 +184,33 @@ public final class RoadNetworkApi {
         String id = (structureId != null && !structureId.isEmpty()) ? structureId : "unknown";
         StructureFileStorage.addStructures(
                 level,
-                java.util.List.of(new StructureInfo(new BlockPos(pos.getX(), 0, pos.getZ()), id)),
+                java.util.List.of(new StructureInfo(new BlockPos(pos.getX(), 0, pos.getZ()), id, mapIcon)),
                 StructureFileStorage.SOURCE_MANUAL
         );
+        MapPatchService.publishStructures(level, java.util.List.of(new StructureInfo(
+                new BlockPos(pos.getX(), 0, pos.getZ()), id, mapIcon)));
+    }
+
+    /** Adds or replaces the map presentation of an already registered endpoint. */
+    public static void setStructureEndpointIcon(ServerLevel level, BlockPos pos, MapLocationIcon mapIcon) {
+        if (!RoadGenerationDimensions.isEnabled(level) || pos == null) return;
+        StructureInfo updated = StructureFileStorage.updateStructureIcon(level,
+                new BlockPos(pos.getX(), 0, pos.getZ()), mapIcon);
+        if (updated != null) MapPatchService.publishStructures(level, java.util.List.of(updated));
+    }
+
+    /**
+     * Adds a map-only campaign link. Unlike {@link #ensureConnection}, this
+     * never queues pathfinding or block placement; it is safe for previews,
+     * street plans, trails, and future structures that have not generated.
+     */
+    public static void registerPlannedMapRoute(ServerLevel level, BlockPos from, BlockPos to,
+                                               MapRouteClass routeClass, String label) {
+        if (level == null || from == null || to == null || from.equals(to)
+                || !RoadGenerationDimensions.isEnabled(level)) return;
+        PlannedMapRoute route = new PlannedMapRoute(from, to, routeClass, label);
+        StructureFileStorage.addPlannedMapRoute(level, route);
+        MapPatchService.publishPlannedMapRoute(level, route);
     }
 
     public static void ensureConnection(ServerLevel level, BlockPos from, BlockPos to) {

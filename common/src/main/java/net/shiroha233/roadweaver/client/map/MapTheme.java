@@ -30,6 +30,9 @@ public final class MapTheme {
     public static final int COLOR_GENERATING = 0xFFFFCC00;
     public static final int COLOR_COMPLETED = 0xFF44BBFF;
     public static final int COLOR_FAILED = 0xE0FF4444;
+    public static final int COLOR_ROUTE_TRAIL = 0xFFD8B36A;
+    public static final int COLOR_ROUTE_ROAD = 0xFFFFB74D;
+    public static final int COLOR_ROUTE_STREET = 0xFFCFD8DC;
 
     // 网格 - 低对比度暗灰
     public static final int COLOR_GRID = 0x20444444;

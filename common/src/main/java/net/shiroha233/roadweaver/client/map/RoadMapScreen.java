@@ -198,6 +198,13 @@ public class RoadMapScreen extends Screen implements MapInputHandler.Callbacks {
                 view.getMinX(), view.getMaxX(), view.getMinZ(), view.getMaxZ(),
                 MapTheme.COLOR_GRID, MapTheme.GRID_TARGET_PX, MapTheme.COLOR_TEXT);
         int thickness = computeThickness();
+        MapRenderers.renderPlannedMapRoutes(g, visibleSnapshot.plannedMapRoutes(),
+                (x1, z1, x2, z2) -> view.segmentInViewWorld(x1, z1, x2, z2),
+                v -> view.toScreenX(v, 0, 0, contentW),
+                v -> view.toScreenY(v, 0, 0, contentH),
+                Math.max(1, thickness),
+                MapTheme.COLOR_ROUTE_TRAIL, MapTheme.COLOR_ROUTE_ROAD, MapTheme.COLOR_ROUTE_STREET,
+                left, top, right, bottom);
         MapRenderers.renderRoadPolylines(g, visibleSnapshot.roadPolylines(),
                 (x1, z1, x2, z2) -> view.segmentInViewWorld(x1, z1, x2, z2),
                 v -> view.toScreenX(v, 0, 0, contentW),
@@ -207,8 +214,8 @@ public class RoadMapScreen extends Screen implements MapInputHandler.Callbacks {
                 left, top, right, bottom,
                 Math.max(1, Math.round(16 / Math.max(0.1f, (float) view.pxPerBlockX(contentW)))));
         MapRenderers.renderStructures(g, this.font,
-                visibleSnapshot.structures(),
-                visibleSnapshot::structureName,
+                  visibleSnapshot.structures(),
+                  visibleSnapshot::structureInfo,
                 v -> view.toScreenX(v, 0, 0, contentW),
                 v -> view.toScreenY(v, 0, 0, contentH),
                 (x, z) -> view.isInViewWorld(x, z),

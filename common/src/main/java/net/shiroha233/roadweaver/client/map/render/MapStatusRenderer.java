@@ -7,6 +7,8 @@ import net.minecraft.network.chat.Component;
 import net.shiroha233.roadweaver.client.map.MapLoadPhase;
 import net.shiroha233.roadweaver.client.map.MapLoadSession;
 import net.shiroha233.roadweaver.client.map.MapTheme;
+import net.shiroha233.roadweaver.generation.InitialGenManager;
+import net.shiroha233.roadweaver.generation.progress.InitialGenerationProgressSnapshot;
 import net.shiroha233.roadweaver.planning.terrain.TerrainSamplingSessionSnapshot;
 import net.shiroha233.roadweaver.config.sub.TerrainSamplingMode;
 
@@ -41,8 +43,14 @@ public final class MapStatusRenderer {
             y += CARD_GAP;
         }
         if (samplingSession != null) {
-            renderCard(graphics, font, SCREEN_MARGIN, y,
+            y += renderCard(graphics, font, SCREEN_MARGIN, y,
                     samplingLines(font, samplingSession, maxTextWidth), MapTheme.DOCK_INDICATOR);
+            y += CARD_GAP;
+        }
+        InitialGenerationProgressSnapshot initialPlan = InitialGenManager.getProgressSnapshot();
+        if (initialPlan.active()) {
+            renderCard(graphics, font, SCREEN_MARGIN, y,
+                    initialPlanningLines(font, initialPlan, maxTextWidth), MapTheme.COLOR_GENERATING);
         }
     }
 
@@ -94,6 +102,18 @@ public final class MapStatusRenderer {
                 line(font, Component.translatable(
                         "gui.roadweaver.map.sampling_fallback", session.fallbackReason()),
                         MapTheme.COLOR_FAILED, maxTextWidth)
+        };
+    }
+
+    private static StatusLine[] initialPlanningLines(Font font,
+                                                     InitialGenerationProgressSnapshot snapshot,
+                                                     int maxTextWidth) {
+        Component stage = Component.translatable(snapshot.stageLabel());
+        return new StatusLine[] {
+                line(font, Component.translatable("gui.roadweaver.map.initial_plan.preview"),
+                        MapTheme.COLOR_GENERATING, maxTextWidth),
+                line(font, Component.translatable("gui.roadweaver.map.initial_plan.progress",
+                        stage, snapshot.overallPercent()), MapTheme.PANEL_TEXT, maxTextWidth)
         };
     }
 

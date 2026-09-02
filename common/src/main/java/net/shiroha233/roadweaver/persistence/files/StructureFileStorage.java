@@ -9,6 +9,7 @@ import net.shiroha233.roadweaver.api.RoadNetworkApi;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.core.model.PlannedMapRoute;
 import net.shiroha233.roadweaver.planning.path.PlannedPathKey;
 import net.shiroha233.roadweaver.core.model.StructureLocationData;
 import org.slf4j.Logger;
@@ -45,6 +46,7 @@ public final class StructureFileStorage {
     private static final class StateData {
         StructureLocationData structureLocations = new StructureLocationData(new ArrayList<>(), new ArrayList<>());
         List<StructureConnection> connections = new ArrayList<>();
+        List<PlannedMapRoute> plannedMapRoutes = new ArrayList<>();
         Set<Long> plannedTileKeys = new HashSet<>();
         Map<Long, Long> plannedTileCenters = new HashMap<>();
         Map<Long, Integer> structureSources = new HashMap<>();
@@ -131,6 +133,45 @@ public final class StructureFileStorage {
             putStructure(state, info, source);
         }
         save(level, state);
+    }
+
+    public static synchronized List<PlannedMapRoute> getPlannedMapRoutes(ServerLevel level) {
+        return new ArrayList<>(state(level).plannedMapRoutes);
+    }
+
+    public static synchronized void addPlannedMapRoute(ServerLevel level, PlannedMapRoute route) {
+        if (level == null || route == null) return;
+        StateData state = state(level);
+        for (int index = 0; index < state.plannedMapRoutes.size(); index++) {
+            PlannedMapRoute existing = state.plannedMapRoutes.get(index);
+            if (existing != null && existing.matchesEndpoints(route.from(), route.to())) {
+                state.plannedMapRoutes.set(index, route);
+                save(level, state);
+                return;
+            }
+        }
+        state.plannedMapRoutes.add(route);
+        save(level, state);
+    }
+
+    /**
+     * Replaces only an endpoint's map presentation. The original source and
+     * physical structure ID are deliberately retained, so an integration can
+     * enrich a predicted candidate without turning it into a manual endpoint.
+     */
+    public static synchronized StructureInfo updateStructureIcon(ServerLevel level, BlockPos pos,
+                                                                   net.shiroha233.roadweaver.core.model.MapLocationIcon icon) {
+        if (level == null || pos == null) return null;
+        StateData state = state(level);
+        int x = pos.getX();
+        int z = pos.getZ();
+        StructureInfo existing = findStructureInfo(state.structureLocations.structureInfos(), x, z);
+        if (existing == null) return null;
+        StructureInfo updated = new StructureInfo(new BlockPos(x, 0, z), existing.structureId(), icon);
+        state.structureLocations.structureInfos().removeIf(info -> info != null && samePos(info.pos(), x, z));
+        state.structureLocations.structureInfos().add(updated);
+        save(level, state);
+        return updated;
     }
 
     public static synchronized List<StructureInfo> queryRect(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ, int... sources) {
@@ -344,6 +385,7 @@ public final class StructureFileStorage {
             state.structureLocations = normalizeStructureLocations(state.structureLocations);
         }
         if (state.connections == null) state.connections = new ArrayList<>();
+        if (state.plannedMapRoutes == null) state.plannedMapRoutes = new ArrayList<>();
         if (state.plannedTileKeys == null) state.plannedTileKeys = new HashSet<>();
         if (state.plannedTileCenters == null) state.plannedTileCenters = new HashMap<>();
         if (state.structureSources == null) state.structureSources = new HashMap<>();
