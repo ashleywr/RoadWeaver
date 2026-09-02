@@ -4,6 +4,7 @@ package net.shiroha233.roadweaver.persistence.sharded;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.shiroha233.roadweaver.core.model.RoadData;
 import net.shiroha233.roadweaver.persistence.RoadReplacement;
 import net.shiroha233.roadweaver.persistence.chunk.RoadFootprint;
@@ -127,7 +128,7 @@ public final class RoadShardStorage {
     }
 
     private static boolean isOverworld(ServerLevel level) {
-        return level != null && Level.OVERWORLD.equals(level.dimension());
+        return RoadGenerationDimensions.isEnabled(level);
     }
 
     private static Set<Long> affectedChunks(RoadData road) {

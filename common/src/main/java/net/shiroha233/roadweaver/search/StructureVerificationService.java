@@ -19,6 +19,7 @@ import net.minecraft.core.Registry;
 
 import net.shiroha233.roadweaver.core.model.StructureInfo;
 import net.shiroha233.roadweaver.config.ConfigService;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +35,7 @@ public final class StructureVerificationService {
      */
     public static List<StructureInfo> verifyPredictedStructures(ServerLevel level,
                                                                         List<StructureInfo> predicted) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())
+        if (!RoadGenerationDimensions.isEnabled(level)
                 || !ConfigService.get().structurePredictionEnabled() || predicted == null || predicted.isEmpty()) {
             return List.of();
         }

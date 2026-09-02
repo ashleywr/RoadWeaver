@@ -25,6 +25,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.shiroha233.roadweaver.config.ConfigService;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
 import net.shiroha233.roadweaver.api.StructurePlacementAdapters;
 
@@ -321,8 +322,7 @@ public final class StructurePredictor {
     }
 
     private static boolean isOverworld(ServerLevel level) {
-        return level != null
-                && Level.OVERWORLD.equals(level.dimension())
+        return RoadGenerationDimensions.isEnabled(level)
                 && ConfigService.get().structurePredictionEnabled();
     }
 

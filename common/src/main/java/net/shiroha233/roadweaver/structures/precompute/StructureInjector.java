@@ -6,6 +6,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -33,7 +34,7 @@ public final class StructureInjector {
     private static final Logger LOGGER = LoggerFactory.getLogger("RoadWeaver/StructureInjector");
     
     public static void injectPendingStructures(ServerLevel level, ChunkAccess chunk) {
-        if (level == null || chunk == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level) || chunk == null) return;
         injectSimplePendingStructures(level, chunk);
         injectRoadsideVillages(level, chunk);
     }

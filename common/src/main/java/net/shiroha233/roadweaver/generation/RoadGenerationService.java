@@ -5,7 +5,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.ModConfig;
@@ -24,6 +23,7 @@ import net.shiroha233.roadweaver.planning.path.PlannedPathCache;
 import net.shiroha233.roadweaver.planning.path.PlannedPathKey;
 import net.shiroha233.roadweaver.postprocess.RoadSnapService;
 import net.shiroha233.roadweaver.runtime.ThreadPoolManager;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -77,7 +77,7 @@ public final class RoadGenerationService {
     // ==================== tick 调度 ====================
 
     public static void tick(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         CURRENT_TICK++;
         refreshQueue(level);
         ALL_RUNNING.removeIf(f -> f == null || f.isDone() || f.isCancelled());
@@ -119,7 +119,7 @@ public final class RoadGenerationService {
     // ==================== 纯生成逻辑（无副作用） ====================
 
     public static boolean generateTask(ServerLevel level, StructureConnection conn) {
-        if (level == null || conn == null || !Level.OVERWORLD.equals(level.dimension())) return false;
+        if (!RoadGenerationDimensions.isEnabled(level) || conn == null) return false;
         try {
             if (Thread.currentThread().isInterrupted()) return false;
 

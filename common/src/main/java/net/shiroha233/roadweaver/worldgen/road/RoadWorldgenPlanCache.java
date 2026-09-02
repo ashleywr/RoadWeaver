@@ -3,9 +3,9 @@ package net.shiroha233.roadweaver.worldgen.road;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
 import net.shiroha233.roadweaver.config.ModConfig;
 import net.shiroha233.roadweaver.persistence.sharded.RoadShardStorage;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +27,7 @@ public final class RoadWorldgenPlanCache {
     }
 
     public static RoadChunkPlan get(ServerLevel level, ChunkPos chunkPos, ModConfig config) {
-        if (level == null || chunkPos == null || !Level.OVERWORLD.equals(level.dimension())
+        if (!RoadGenerationDimensions.isEnabled(level) || chunkPos == null
                 || config == null || !config.roadAppearance().roadsEnabled()) {
             return RoadChunkPlan.empty(chunkPos == null ? new ChunkPos(0, 0) : chunkPos,
                     config == null ? 4 : config.roadAppearance().roadClearHeight(), 0L);

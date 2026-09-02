@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.shiroha233.roadweaver.persistence.files.SignTextFileStorage;
 
 import java.util.ArrayList;
@@ -143,7 +144,7 @@ public final class SignTextShardStorage {
     }
 
     private static boolean isOverworld(ServerLevel level) {
-        return level != null && Level.OVERWORLD.equals(level.dimension());
+        return RoadGenerationDimensions.isEnabled(level);
     }
 
     private record MemoryEntry(long chunkKey, long posKey, PendingSignWrite write) {}

@@ -14,6 +14,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,8 +72,8 @@ public final class StructureDiscoveryService {
 
     /** 从服务端世界收集结构和标签 */
     public static void discoverFromLevel(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) {
-            LOGGER.warn("无法发现结构: 仅支持主世界");
+        if (!RoadGenerationDimensions.isEnabled(level)) {
+            LOGGER.warn("无法发现结构: 维度未在 road_generation 标签中启用");
             return;
         }
         RegistryAccess access = level.registryAccess();

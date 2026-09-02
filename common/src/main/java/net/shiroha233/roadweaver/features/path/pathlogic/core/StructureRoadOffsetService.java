@@ -3,6 +3,7 @@ package net.shiroha233.roadweaver.features.path.pathlogic.core;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.core.model.RoadSegmentPlacement;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
@@ -37,7 +38,7 @@ public final class StructureRoadOffsetService {
             BlockPos rawEnd) {
         
         if (segments == null || segments.size() < 3) return segments;
-        if (!Level.OVERWORLD.equals(level.dimension())) return segments;
+        if (!RoadGenerationDimensions.isEnabled(level)) return segments;
         
         int startOffset = getOffsetBlocksForEndpoint(level, rawStart);
         int endOffset = getOffsetBlocksForEndpoint(level, rawEnd);
@@ -96,7 +97,7 @@ public final class StructureRoadOffsetService {
     }
 
     private static StructureCategory detectCategory(ServerLevel level, BlockPos endpoint) {
-        if (!Level.OVERWORLD.equals(level.dimension())) return StructureCategory.UNKNOWN;
+        if (!RoadGenerationDimensions.isEnabled(level)) return StructureCategory.UNKNOWN;
 
         int cx = endpoint.getX() >> 4;
         int cz = endpoint.getZ() >> 4;

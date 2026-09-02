@@ -34,6 +34,7 @@ import net.shiroha233.roadweaver.features.path.decoration.system.SkippedBridgeBa
 import net.shiroha233.roadweaver.worldgen.road.RoadChunkPlan;
 import net.shiroha233.roadweaver.worldgen.road.RoadChunkSlice;
 import net.shiroha233.roadweaver.worldgen.road.RoadWorldgenPlanCache;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 
 import java.util.*;
 
@@ -49,7 +50,7 @@ public class PathFeature extends Feature<PathFeatureConfig> {
     public boolean place(FeaturePlaceContext<PathFeatureConfig> ctx) {
         WorldGenLevel world = ctx.level();
         Level lvl = world.getLevel();
-        if (!(lvl instanceof ServerLevel server) || !Level.OVERWORLD.equals(server.dimension()))
+        if (!(lvl instanceof ServerLevel server) || !RoadGenerationDimensions.isEnabled(server))
             return false;
 
         ModConfig cfg = ConfigService.get();

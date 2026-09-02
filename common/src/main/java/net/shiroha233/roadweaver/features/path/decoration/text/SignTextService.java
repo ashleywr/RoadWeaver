@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.HangingSignBlockEntity;
@@ -38,7 +39,7 @@ public final class SignTextService {
     private static final ConcurrentHashMap<Long, Boolean> DIRTY_MARKS = new ConcurrentHashMap<>();
 
     public static void tick(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
 
         if (DIRTY_CHUNKS.isEmpty()) return;
 
@@ -61,12 +62,12 @@ public final class SignTextService {
     }
 
     public static void onChunkReady(ServerLevel level, ChunkPos chunkPos) {
-        if (level == null || chunkPos == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level) || chunkPos == null) return;
         markChunkDirty(level, chunkPos.x, chunkPos.z);
     }
 
     public static void onDimensionUnload(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         DIRTY_CHUNKS.clear();
         DIRTY_MARKS.clear();
         SignTextShardStorage.clearLevel(level);
@@ -74,7 +75,7 @@ public final class SignTextService {
 
     public static void writeDistanceSign(WorldGenLevel level, BlockPos pos, String text) {
         net.minecraft.world.level.Level l = level.getLevel();
-        if (!(l instanceof net.minecraft.server.level.ServerLevel sLevel) || !Level.OVERWORLD.equals(sLevel.dimension())) return;
+        if (!(l instanceof net.minecraft.server.level.ServerLevel sLevel) || !RoadGenerationDimensions.isEnabled(sLevel)) return;
 
         try {
             String safeText = sanitizeDistanceText(text);
@@ -111,7 +112,7 @@ public final class SignTextService {
 
     public static void writeSeaQuestionSign(WorldGenLevel level, BlockPos pos) {
         net.minecraft.world.level.Level l = level.getLevel();
-        if (!(l instanceof net.minecraft.server.level.ServerLevel sLevel) || !Level.OVERWORLD.equals(sLevel.dimension())) return;
+        if (!(l instanceof net.minecraft.server.level.ServerLevel sLevel) || !RoadGenerationDimensions.isEnabled(sLevel)) return;
 
         try {
             SignTextShardStorage.upsert(sLevel, pos, SignTextShardStorage.TYPE_SEA_QUESTION, "");
@@ -146,7 +147,7 @@ public final class SignTextService {
     }
 
     private static void processChunk(ServerLevel level, int chunkX, int chunkZ) {
-        if (!Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         if (level.getChunkSource().getChunkNow(chunkX, chunkZ) == null) return;
         boolean needRetry = false;
 
@@ -202,7 +203,7 @@ public final class SignTextService {
     }
 
     private static void markChunkDirty(ServerLevel level, int chunkX, int chunkZ) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         long key = ChunkPos.asLong(chunkX, chunkZ);
         if (DIRTY_MARKS.putIfAbsent(key, Boolean.TRUE) != null) return;
         DIRTY_CHUNKS.add(key);
@@ -213,7 +214,7 @@ public final class SignTextService {
     }
 
     public static void flushPersistentFallback(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         SignTextShardStorage.flushPending(level);
     }
 

@@ -4,6 +4,7 @@ package net.shiroha233.roadweaver.persistence.files;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,7 +113,7 @@ public final class SignTextFileStorage {
     }
 
     private static boolean isOverworld(ServerLevel level) {
-        return level != null && Level.OVERWORLD.equals(level.dimension());
+        return RoadGenerationDimensions.isEnabled(level);
     }
 
     private static final class SignChunkData {

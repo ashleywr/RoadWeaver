@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.minecraft.world.level.block.Rotation;
 
 import java.util.*;
@@ -92,6 +93,6 @@ public final class PendingStructureStorage {
     }
 
     private static boolean isOverworld(ServerLevel level) {
-        return level != null && Level.OVERWORLD.equals(level.dimension());
+        return RoadGenerationDimensions.isEnabled(level);
     }
 }

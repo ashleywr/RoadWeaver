@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.shiroha233.roadweaver.structures.data.BiomeCategory;
 import net.shiroha233.roadweaver.structures.types.RoadsideStructure;
@@ -30,7 +31,7 @@ public final class RoadsideStructureRegistry {
     ) {}
     
     public static List<RoadsideStructureEntry> getAll(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return List.of();
+        if (!RoadGenerationDimensions.isEnabled(level)) return List.of();
         List<RoadsideStructureEntry> current = cache;
         if (current != null) return current;
         synchronized (RoadsideStructureRegistry.class) {

@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.minecraft.world.level.LevelSimulatedReader;
 import net.minecraft.world.level.WorldGenLevel;
 import net.shiroha233.roadweaver.config.ConfigService;
@@ -35,7 +36,7 @@ public final class RoadSpatialIndex {
     }
 
     public static boolean isNearRoad(ServerLevel level, BlockPos pos) {
-        if (level == null || pos == null || !Level.OVERWORLD.equals(level.dimension())) return false;
+        if (!RoadGenerationDimensions.isEnabled(level) || pos == null) return false;
         ModConfig config = ConfigService.get();
         if (config == null || !config.roadAppearance().roadsEnabled()
                 || !config.roadAppearance().preventTreesOnRoad()) {

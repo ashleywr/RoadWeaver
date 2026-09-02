@@ -12,6 +12,7 @@ import net.shiroha233.roadweaver.map.MapPatchService;
 import net.shiroha233.roadweaver.persistence.WorldDataProvider;
 import net.shiroha233.roadweaver.persistence.files.StructureFileStorage;
 import net.shiroha233.roadweaver.planning.RoadPlanningService;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -129,7 +130,7 @@ public final class RoadNetworkApi {
     }
 
     public static void ensureConnection(ServerLevel level, BlockPos from, BlockPos to, boolean generateImmediately) {
-        if (level == null || from == null || to == null || !Level.OVERWORLD.equals(level.dimension()))
+        if (!RoadGenerationDimensions.isEnabled(level) || from == null || to == null)
             return;
         if (from.equals(to))
             return;
@@ -221,7 +222,7 @@ public final class RoadNetworkApi {
     }
 
     public static void planRegion(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension()))
+        if (!RoadGenerationDimensions.isEnabled(level))
             return;
         RoadPlanningService.planRectAsync(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
     }

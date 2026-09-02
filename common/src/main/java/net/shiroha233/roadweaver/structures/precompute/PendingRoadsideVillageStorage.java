@@ -4,6 +4,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -78,6 +79,6 @@ public final class PendingRoadsideVillageStorage {
     }
 
     private static boolean isOverworld(ServerLevel level) {
-        return level != null && Level.OVERWORLD.equals(level.dimension());
+        return RoadGenerationDimensions.isEnabled(level);
     }
 }

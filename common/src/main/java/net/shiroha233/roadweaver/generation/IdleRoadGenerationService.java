@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.ModConfig;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
@@ -89,7 +90,7 @@ public final class IdleRoadGenerationService {
         if (player == null) return;
 
         ServerLevel level = player.serverLevel();
-        if (!Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         ModConfig cfg = ConfigService.get();
         if (!cfg.roadAppearance().roadsEnabled()) return;
 
@@ -144,7 +145,7 @@ public final class IdleRoadGenerationService {
     }
 
     public static void tick(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
 
         ModConfig cfg = ConfigService.get();
         if (!cfg.performance().idleGenerationEnabled()) {
@@ -184,7 +185,7 @@ public final class IdleRoadGenerationService {
     }
 
     public static boolean shouldReserveForIdle(ServerLevel level, StructureConnection conn) {
-        if (level == null || conn == null || !Level.OVERWORLD.equals(level.dimension())) return false;
+        if (!RoadGenerationDimensions.isEnabled(level) || conn == null) return false;
         if (!ConfigService.get().performance().idleGenerationEnabled()) return false;
 
         ConcurrentHashMap<PlannedPathKey, Boolean> owned = IDLE_OWNED;
@@ -199,7 +200,7 @@ public final class IdleRoadGenerationService {
     }
 
     public static boolean isManagedByIdle(ServerLevel level, StructureConnection conn) {
-        if (level == null || conn == null || !Level.OVERWORLD.equals(level.dimension())) return false;
+        if (!RoadGenerationDimensions.isEnabled(level) || conn == null) return false;
         if (!ConfigService.get().performance().idleGenerationEnabled()) return false;
         PlannedPathKey key = PlannedPathKey.of(conn);
         if (IN_FLIGHT.containsKey(key)) return true;

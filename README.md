@@ -42,6 +42,25 @@ A Minecraft mod that automatically generates beautiful roads between villages or
 
 ## Compatibility
 
+### Road-generation dimensions
+
+RoadWeaver generates only in dimensions selected by the
+`#roadweaver:road_generation` level-stem tag. The bundled tag contains
+`minecraft:overworld`, preserving the historical default. A datapack can
+replace that list to move roads to a campaign dimension instead, for example:
+
+```json
+{
+  "replace": true,
+  "values": ["your_mod:campaign"]
+}
+```
+
+Place the file at
+`data/roadweaver/tags/worldgen/dimension/road_generation.json`. Road storage
+is dimension-scoped. Initial planning currently starts one tagged dimension per
+server start; choose one campaign dimension for a clean initial pass.
+
 - New versions (2.0.0+) completely abandon the old `/locate` command search mechanism, no longer blocking the game main thread
 - Structure prediction, road network planning and pathfinding all run in dedicated thread pools; main thread only handles driving and result application
 

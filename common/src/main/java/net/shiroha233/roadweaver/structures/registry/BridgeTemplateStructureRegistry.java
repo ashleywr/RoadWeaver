@@ -174,7 +174,7 @@ public final class BridgeTemplateStructureRegistry {
     }
 
     public static List<BridgeTemplate> getAll(ServerLevel level) {
-        if (level == null || !net.minecraft.world.level.Level.OVERWORLD.equals(level.dimension())) return List.of();
+        if (!net.shiroha233.roadweaver.world.RoadGenerationDimensions.isEnabled(level)) return List.of();
         List<BridgeTemplate> current = cache;
         if (current != null) return current;
         synchronized (BridgeTemplateStructureRegistry.class) {
