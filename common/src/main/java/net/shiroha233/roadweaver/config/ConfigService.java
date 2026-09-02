@@ -7,7 +7,6 @@ import net.shiroha233.roadweaver.persistence.files.FileStorageIO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,10 +29,17 @@ public final class ConfigService {
         Path baseDir = Platform.getConfigFolder().resolve(BASE_DIR);
         Path file = baseDir.resolve(FILE_NAME);
         ensureDirectory(baseDir);
+        boolean needsMapAppearanceMigration = false;
 
         if (Files.exists(file)) {
-            try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-                ModConfig loaded = GSON.fromJson(reader, ModConfig.class);
+            try {
+                // The field was added after existing installations had already
+                // written their configuration. Gson supplies its in-memory
+                // default for an absent field, but without this small migration
+                // users would have no discoverable, editable map setting.
+                String raw = Files.readString(file, StandardCharsets.UTF_8);
+                needsMapAppearanceMigration = !raw.contains("\"mapAppearance\"");
+                ModConfig loaded = GSON.fromJson(raw, ModConfig.class);
                 if (loaded != null) INSTANCE = loaded;
             } catch (Exception e) {
                 LOGGER.warn("配置文件读取失败，使用默认值: {}", file, e);
@@ -47,6 +53,7 @@ public final class ConfigService {
         } catch (Throwable t) {
             LOGGER.warn("配置校验失败，继续使用原始值", t);
         }
+        if (needsMapAppearanceMigration) save();
         LOGGER.info("配置已加载 (predictRadius={}, predictionEnabled={})",
                 INSTANCE.structurePrediction().predictRadiusChunks(),
                 INSTANCE.structurePrediction().enabled());

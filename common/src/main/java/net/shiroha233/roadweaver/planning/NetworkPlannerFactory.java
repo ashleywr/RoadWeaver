@@ -4,6 +4,7 @@ import net.shiroha233.roadweaver.config.sub.PlanningConfig.PlanningAlgorithm;
 import net.shiroha233.roadweaver.planning.impl.DelaunayPlanner;
 import net.shiroha233.roadweaver.planning.impl.KNNPlanner;
 import net.shiroha233.roadweaver.planning.impl.MSTPlanner;
+import net.shiroha233.roadweaver.planning.impl.NaturalNetworkPlanner;
 import net.shiroha233.roadweaver.planning.impl.RNGPlanner;
 import net.shiroha233.roadweaver.planning.impl.SnapBranchPlanner;
 
@@ -19,6 +20,7 @@ public final class NetworkPlannerFactory {
             case DELAUNAY -> new DelaunayPlanner();
             case RNG -> new RNGPlanner();
             case MST -> new MSTPlanner();
+            case NATURAL -> new NaturalNetworkPlanner();
             case SNAP_BRANCH -> new SnapBranchPlanner();
         };
     }

@@ -7,12 +7,14 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.ModConfig;
+import net.shiroha233.roadweaver.api.RoadNetworkApi;
 import net.shiroha233.roadweaver.core.constants.RoadConstants;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
 import net.shiroha233.roadweaver.generation.progress.InitialGenerationProgressTracker;
 import net.shiroha233.roadweaver.generation.progress.InitialGenerationStage;
+import net.shiroha233.roadweaver.generation.InitialGenManager;
 import net.shiroha233.roadweaver.map.MapPatchService;
 import net.shiroha233.roadweaver.map.tile.core.MapTileCoord;
 import net.shiroha233.roadweaver.map.tile.core.MapTileLayer;
@@ -20,13 +22,13 @@ import net.shiroha233.roadweaver.map.tile.core.MapTileRect;
 import net.shiroha233.roadweaver.map.tile.core.MapTileScheme;
 import net.shiroha233.roadweaver.map.tile.storage.ServerMapTileStorage;
 import net.shiroha233.roadweaver.map.tile.storage.AccurateTerrainMapFingerprintGuard;
+import net.shiroha233.roadweaver.map.tile.storage.MapAppearanceTileCacheGuard;
 import net.shiroha233.roadweaver.map.tile.backfill.AccurateTerrainTileBackfillService;
 import net.shiroha233.roadweaver.pathfinding.terrain.region.CoarseTerrainPngWriter;
 import net.shiroha233.roadweaver.pathfinding.terrain.region.CoarseTerrainRegion;
 import net.shiroha233.roadweaver.pathfinding.terrain.region.CoarseTerrainRegionSampler;
 import net.shiroha233.roadweaver.persistence.WorldDataProvider;
 import net.shiroha233.roadweaver.persistence.files.StructureFileStorage;
-import net.shiroha233.roadweaver.persistence.sharded.RoadShardStorage;
 import net.shiroha233.roadweaver.config.sub.TerrainSamplingMode;
 import net.shiroha233.roadweaver.planning.impl.KNNPlanner;
 import net.shiroha233.roadweaver.planning.path.PlannedPathCache;
@@ -40,6 +42,7 @@ import net.shiroha233.roadweaver.network.ServerMapPlanningActivityBridge;
 import net.shiroha233.roadweaver.runtime.ThreadPoolManager;
 import net.shiroha233.roadweaver.search.StructureIndexService;
 import net.shiroha233.roadweaver.util.ComputeService;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +58,6 @@ public final class RoadPlanningService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("roadweaver");
     private static final Set<TerrainRepairKey> TERRAIN_REPAIR_TILES = ConcurrentHashMap.newKeySet();
-    private static final Set<Long> ROAD_BACKFILL_PLAN_TILES = ConcurrentHashMap.newKeySet();
     private static final Set<Long> PLANNING_TILES = ConcurrentHashMap.newKeySet();
     private static final RoadTerrainPlanningPipeline TERRAIN_PLANNING = new RoadTerrainPlanningPipeline();
 
@@ -78,8 +80,9 @@ public final class RoadPlanningService {
     }
 
     public static void initialPlan(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         ServerMapTileStorage.migrateLegacyTerrainTiles(level);
+        MapAppearanceTileCacheGuard.ensure(level);
         AccurateTerrainMapFingerprintGuard.ensure(level);
         InitialGenerationProgressTracker.enterStage(InitialGenerationStage.PLANNING, "discovering_structures");
         ModConfig cfg = ConfigService.get();
@@ -96,15 +99,36 @@ public final class RoadPlanningService {
 
     /** Runs one bounded, synchronous first-pass plan without inventing a player radius. */
     public static void initialPlan(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return;
-        planRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
+        initialPlan(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, true);
+    }
+
+    /** Runs a bounded first pass; integrations may provide an exclusive endpoint roster. */
+    public static void initialPlan(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ,
+                                   boolean discoverStructures) {
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
+        MapAppearanceTileCacheGuard.ensure(level);
+        planRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, discoverStructures);
+        markInitialRegionTiles(level, minBlockX >> 4, minBlockZ >> 4, maxBlockX >> 4, maxBlockZ >> 4);
+    }
+
+    /**
+     * Records an already-populated initial region without performing another
+     * graph solve. This is used when a world has legacy/persisted roads but
+     * predates dynamic-tile bookkeeping, preventing a first map-only reopen
+     * from silently expanding the same initial area again.
+     */
+    public static void markInitialRegionCovered(ServerLevel level,
+                                                int minBlockX, int minBlockZ,
+                                                int maxBlockX, int maxBlockZ) {
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
         markInitialRegionTiles(level, minBlockX >> 4, minBlockZ >> 4, maxBlockX >> 4, maxBlockZ >> 4);
     }
 
     public static void planAroundPlayer(ServerPlayer player) {
         if (player == null) return;
         ServerLevel level = player.serverLevel();
-        if (!Level.OVERWORLD.equals(level.dimension())) return;
+        if (!RoadGenerationDimensions.isEnabled(level)) return;
+        if (InitialGenManager.isActive()) return;
         ModConfig cfg = ConfigService.get();
         if (!cfg.planning().dynamicPlanEnabled()) return;
         int radiusChunks = Math.max(1, cfg.planning().dynamicPlanRadiusChunks());
@@ -121,10 +145,11 @@ public final class RoadPlanningService {
         int maxZ = (pcz + radiusChunks) * 16;
         WorldDataProvider provider0 = WorldDataProvider.getInstance();
         boolean alreadyPlanned = provider0.getPlannedTileKeys(level).contains(key);
-        boolean hasExistingRoads = RoadShardStorage.hasRoadInRect(level, minX, minZ, maxX, maxZ);
-        boolean backfillPlan = hasExistingRoads && markRoadBackfillPlanTile(level, key);
-        boolean shouldPlan = !alreadyPlanned || backfillPlan;
-        if (!shouldPlan) {
+        if (alreadyPlanned) {
+            // Existing roads may need map-tile repair, but re-running a graph
+            // solve here also re-discovers endpoints and mutates a world that
+            // the player merely reopened. Tile repair is intentionally
+            // non-destructive and independent of planning.
             ensureTerrainMapTilesAsync(level, key, minX, minZ, maxX, maxZ);
             return;
         }
@@ -139,14 +164,12 @@ public final class RoadPlanningService {
                 maxZ,
                 cfg.planning().terrainSamplingMode());
         try {
-            planRectAsync(level, minX, minZ, maxX, maxZ).whenComplete((ignored, error) -> {
+            boolean exclusiveCandidates = RoadNetworkApi.hasExclusiveInitialPlanningCandidates(level,
+                    new net.shiroha233.roadweaver.api.InitialPlanningBounds(minX, minZ, maxX, maxZ));
+            planRectAsync(level, minX, minZ, maxX, maxZ, !exclusiveCandidates).whenComplete((ignored, error) -> {
                 try {
                     unmarkPlanningTile(level, key);
-                    if (hasExistingRoads) {
-                        ensureTerrainMapTilesAsync(level, key, minX, minZ, maxX, maxZ);
-                    }
                     if (error != null) {
-                        if (backfillPlan) unmarkRoadBackfillPlanTile(level, key);
                         LOGGER.warn("动态规划 tile 失败，保留重试机会 dimension={} tile=[{},{}]", level.dimension().location(), kx, kz, error);
                         return;
                     }
@@ -160,20 +183,9 @@ public final class RoadPlanningService {
             });
         } catch (RuntimeException submissionFailure) {
             unmarkPlanningTile(level, key);
-            if (backfillPlan) {
-                unmarkRoadBackfillPlanTile(level, key);
-            }
             finishDynamicPlanningSampling(level, samplingActivity);
             throw submissionFailure;
         }
-    }
-
-    private static boolean markRoadBackfillPlanTile(ServerLevel level, long tileKey) {
-        return ROAD_BACKFILL_PLAN_TILES.add(tileKey);
-    }
-
-    private static void unmarkRoadBackfillPlanTile(ServerLevel level, long tileKey) {
-        ROAD_BACKFILL_PLAN_TILES.remove(tileKey);
     }
 
     private static boolean markPlanningTile(ServerLevel level, long tileKey) {
@@ -332,10 +344,11 @@ public final class RoadPlanningService {
         return true;
     }
 
-    private static void planRect(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
+    private static void planRect(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ,
+                                 boolean discoverStructures) {
         List<BlockPos> points = new ArrayList<>();
         HashSet<Long> seenPos = new HashSet<>();
-        collectStructurePointsInto(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, points, seenPos);
+        collectStructurePointsInto(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, points, seenPos, discoverStructures);
         if (points.size() < 2) return;
 
         ModConfig cfg0 = ConfigService.get();
@@ -377,9 +390,13 @@ public final class RoadPlanningService {
         planRoadTerrain(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, incoming);
     }
 
-    private static void collectStructurePointsInto(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ, List<BlockPos> out, Set<Long> seenPos) {
-        StructureIndexService.predictAndVerifyInRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
-        List<StructureInfo> cached = StructureFileStorage.queryRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
+    private static void collectStructurePointsInto(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ,
+                                                   List<BlockPos> out, Set<Long> seenPos, boolean discoverStructures) {
+        if (discoverStructures) StructureIndexService.predictAndVerifyInRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ);
+        List<StructureInfo> cached = discoverStructures
+                ? StructureFileStorage.queryRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ)
+                : StructureFileStorage.queryRect(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ,
+                StructureFileStorage.SOURCE_MANUAL);
         if (cached == null || cached.isEmpty()) return;
         for (StructureInfo info : cached) {
             if (info == null || info.pos() == null) continue;
@@ -393,7 +410,7 @@ public final class RoadPlanningService {
     }
 
     public static CompletableFuture<Void> initialPlanAsync(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return CompletableFuture.completedFuture(null);
+        if (!RoadGenerationDimensions.isEnabled(level)) return CompletableFuture.completedFuture(null);
         ModConfig cfg = ConfigService.get();
         int radiusChunks = Math.max(1, cfg.planning().initialPlanRadiusChunks());
         BlockPos spawn = level.getSharedSpawnPos();
@@ -409,7 +426,13 @@ public final class RoadPlanningService {
     private record PlannedRegionResult(List<StructureConnection> incoming) {}
 
     public static CompletableFuture<Void> planRectAsync(ServerLevel level, int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) return CompletableFuture.completedFuture(null);
+        return planRectAsync(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, true);
+    }
+
+    /** Plans an endpoint roster asynchronously without forcing a generic scan when it is integration-owned. */
+    public static CompletableFuture<Void> planRectAsync(ServerLevel level, int minBlockX, int minBlockZ,
+                                                         int maxBlockX, int maxBlockZ, boolean discoverStructures) {
+        if (!RoadGenerationDimensions.isEnabled(level)) return CompletableFuture.completedFuture(null);
         final long epoch = ThreadPoolManager.currentEpoch();
         final List<StructureConnection> existingSnapshot;
         {
@@ -422,7 +445,8 @@ public final class RoadPlanningService {
             if (!ThreadPoolManager.isEpoch(epoch)) return new PlannedRegionResult(List.of());
             ArrayList<BlockPos> points = new ArrayList<>();
             HashSet<Long> seenPos = new HashSet<>();
-            collectStructurePointsInto(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, points, seenPos);
+            collectStructurePointsInto(level, minBlockX, minBlockZ, maxBlockX, maxBlockZ, points, seenPos,
+                    discoverStructures);
             for (StructureConnection c : existingSnapshot) {
                 BlockPos f = new BlockPos(c.from().getX(), 0, c.from().getZ());
                 BlockPos t = new BlockPos(c.to().getX(), 0, c.to().getZ());
@@ -622,7 +646,6 @@ public final class RoadPlanningService {
 
     public static void resetAll() {
         TERRAIN_REPAIR_TILES.clear();
-        ROAD_BACKFILL_PLAN_TILES.clear();
         PLANNING_TILES.clear();
         AutomaticPlanningSamplingActivities.clearAll();
     }

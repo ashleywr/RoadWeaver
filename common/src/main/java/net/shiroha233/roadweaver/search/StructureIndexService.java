@@ -3,11 +3,13 @@ package net.shiroha233.roadweaver.search;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.shiroha233.roadweaver.api.RoadNetworkApi;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.ModConfig;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
 import net.shiroha233.roadweaver.map.MapPatchService;
 import net.shiroha233.roadweaver.persistence.files.StructureFileStorage;
+import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +34,7 @@ public final class StructureIndexService {
      * 预测并验证围绕出生点的结构
      */
     public static List<StructureInfo> predictAndVerifyAroundSpawn(ServerLevel level) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) {
+        if (!RoadGenerationDimensions.isEnabled(level)) {
             return List.of();
         }
         ModConfig cfg = ConfigService.get();
@@ -54,7 +56,15 @@ public final class StructureIndexService {
     public static List<StructureInfo> predictAndVerifyInRect(ServerLevel level,
                                                                      int minBlockX, int minBlockZ,
                                                                      int maxBlockX, int maxBlockZ) {
-        if (level == null || !Level.OVERWORLD.equals(level.dimension())) {
+        if (!RoadGenerationDimensions.isEnabled(level)) {
+            return List.of();
+        }
+        // Do not spend time predicting, verify, or publish generic structures
+        // into a campaign dimension whose integration has explicitly supplied
+        // the complete endpoint roster. The storage layer retains the same
+        // invariant as a defensive backstop, but returning here also keeps
+        // those rejected predictions out of the client map snapshot.
+        if (RoadNetworkApi.isInitialPlanningExclusive(level)) {
             return List.of();
         }
 

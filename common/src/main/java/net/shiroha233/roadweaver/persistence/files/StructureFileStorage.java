@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.shiroha233.roadweaver.api.RoadNetworkApi;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
@@ -116,6 +117,14 @@ public final class StructureFileStorage {
 
     public static synchronized void addStructures(ServerLevel level, List<StructureInfo> infos, int source) {
         if (level == null || infos == null || infos.isEmpty()) return;
+        // An integration may deliberately define the complete endpoint roster
+        // for a dimension (for example a hand-authored campaign atlas).  The
+        // planner and map sampler both honour that policy, but this final
+        // persistence guard prevents a future or alternate discovery path
+        // from silently mixing generic structure predictions into that graph.
+        // Manual endpoints, including RoadWeaver's public API registrations,
+        // remain accepted as normal.
+        if (source == SOURCE_PREDICTED && RoadNetworkApi.isInitialPlanningExclusive(level)) return;
         StateData state = state(level);
         for (StructureInfo info : infos) {
             if (info == null || info.pos() == null) continue;

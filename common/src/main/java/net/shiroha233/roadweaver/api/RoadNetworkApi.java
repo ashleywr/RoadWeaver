@@ -3,6 +3,7 @@ package net.shiroha233.roadweaver.api;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.resources.ResourceKey;
 import net.shiroha233.roadweaver.core.model.ConnectionStatus;
 import net.shiroha233.roadweaver.core.model.StructureConnection;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
@@ -17,11 +18,16 @@ import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class RoadNetworkApi {
     private static final CopyOnWriteArrayList<InitialPlanningListener> INITIAL_PLANNING_LISTENERS = new CopyOnWriteArrayList<>();
     private static final CopyOnWriteArrayList<InitialPlanningBoundsProvider> INITIAL_PLANNING_BOUNDS_PROVIDERS = new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<InitialPlanningCandidateProvider> INITIAL_PLANNING_CANDIDATE_PROVIDERS = new CopyOnWriteArrayList<>();
+    /** Per-dimension opt-in; never enabled by default or by a bounds provider alone. */
+    private static final Set<ResourceKey<Level>> EXCLUSIVE_INITIAL_PLANNING_DIMENSIONS = ConcurrentHashMap.newKeySet();
 
     private RoadNetworkApi() {
     }
@@ -58,6 +64,15 @@ public final class RoadNetworkApi {
         INITIAL_PLANNING_BOUNDS_PROVIDERS.remove(provider);
     }
 
+    /** Registers pure addon candidates to seed RoadWeaver's bounded first pass. */
+    public static void registerInitialPlanningCandidateProvider(InitialPlanningCandidateProvider provider) {
+        if (provider != null) INITIAL_PLANNING_CANDIDATE_PROVIDERS.addIfAbsent(provider);
+    }
+
+    public static void unregisterInitialPlanningCandidateProvider(InitialPlanningCandidateProvider provider) {
+        INITIAL_PLANNING_CANDIDATE_PROVIDERS.remove(provider);
+    }
+
     /** Returns the first valid optional domain without allowing an addon failure to stop startup. */
     public static Optional<InitialPlanningBounds> initialPlanningBounds(ServerLevel level) {
         for (InitialPlanningBoundsProvider provider : INITIAL_PLANNING_BOUNDS_PROVIDERS) {
@@ -69,6 +84,45 @@ public final class RoadNetworkApi {
             }
         }
         return Optional.empty();
+    }
+
+    /** Collects optional pure candidates without allowing an addon failure to stop startup. */
+    public static List<StructureInfo> initialPlanningCandidates(ServerLevel level, InitialPlanningBounds bounds) {
+        ArrayList<StructureInfo> candidates = new ArrayList<>();
+        if (level == null || bounds == null) return candidates;
+        for (InitialPlanningCandidateProvider provider : INITIAL_PLANNING_CANDIDATE_PROVIDERS) {
+            try {
+                List<StructureInfo> supplied = provider.initialCandidates(level, bounds);
+                if (supplied != null) candidates.addAll(supplied);
+            } catch (RuntimeException ignored) {
+                // Optional integrations must never cancel RoadWeaver's plan.
+            }
+        }
+        return candidates;
+    }
+
+    /** True when an integration deliberately owns the initial regional roster. */
+    public static boolean hasExclusiveInitialPlanningCandidates(ServerLevel level, InitialPlanningBounds bounds) {
+        if (level == null || bounds == null) return false;
+        for (InitialPlanningCandidateProvider provider : INITIAL_PLANNING_CANDIDATE_PROVIDERS) {
+            try {
+                if (provider.exclusive(level, bounds)) return true;
+            } catch (RuntimeException ignored) {
+                // Optional integrations must never cancel RoadWeaver's plan.
+            }
+        }
+        return false;
+    }
+
+    /** Records the selected first-plan policy so dynamic regional expansion cannot change its endpoint universe. */
+    public static void setInitialPlanningExclusive(ServerLevel level, boolean exclusive) {
+        if (level == null) return;
+        if (exclusive) EXCLUSIVE_INITIAL_PLANNING_DIMENSIONS.add(level.dimension());
+        else EXCLUSIVE_INITIAL_PLANNING_DIMENSIONS.remove(level.dimension());
+    }
+
+    public static boolean isInitialPlanningExclusive(ServerLevel level) {
+        return level != null && EXCLUSIVE_INITIAL_PLANNING_DIMENSIONS.contains(level.dimension());
     }
 
     /** Internal lifecycle hook used by RoadWeaver's initial-generation manager. */

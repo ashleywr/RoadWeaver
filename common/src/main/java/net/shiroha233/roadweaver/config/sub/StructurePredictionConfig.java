@@ -18,6 +18,7 @@ public final class StructurePredictionConfig implements SubConfig {
     private List<String> structureBlacklist = new ArrayList<>();
     private int villageRoadOffset = RoadConstants.DEFAULT_VILLAGE_ROAD_OFFSET;
     private int otherStructureRoadOffset = RoadConstants.DEFAULT_OTHER_STRUCTURE_ROAD_OFFSET;
+    private int plannedStructureClearanceBlocks = 128;
 
     @Override
     public void sanitize() {
@@ -25,7 +26,11 @@ public final class StructurePredictionConfig implements SubConfig {
         if (structureBlacklist == null) structureBlacklist = new ArrayList<>();
         if (predictRadiusChunks <= 0) predictRadiusChunks = RoadConstants.DEFAULT_PREDICT_RADIUS_CHUNKS;
         if (villageRoadOffset < 0) villageRoadOffset = RoadConstants.DEFAULT_VILLAGE_ROAD_OFFSET;
-        if (otherStructureRoadOffset < 0) otherStructureRoadOffset = RoadConstants.DEFAULT_OTHER_STRUCTURE_ROAD_OFFSET;
+        otherStructureRoadOffset = Math.max(
+                0,
+                Math.min(RoadConstants.STRUCTURE_OFFSET_MAX, otherStructureRoadOffset)
+        );
+        if (plannedStructureClearanceBlocks < 0) plannedStructureClearanceBlocks = 128;
     }
 
     @Override
@@ -39,6 +44,7 @@ public final class StructurePredictionConfig implements SubConfig {
         copy.structureBlacklist = new ArrayList<>(this.structureBlacklist);
         copy.villageRoadOffset = this.villageRoadOffset;
         copy.otherStructureRoadOffset = this.otherStructureRoadOffset;
+        copy.plannedStructureClearanceBlocks = this.plannedStructureClearanceBlocks;
         return copy;
     }
 
@@ -60,4 +66,6 @@ public final class StructurePredictionConfig implements SubConfig {
     public void setVillageRoadOffset(int v) { this.villageRoadOffset = v; }
     public int otherStructureRoadOffset() { return otherStructureRoadOffset; }
     public void setOtherStructureRoadOffset(int v) { this.otherStructureRoadOffset = v; }
+    public int plannedStructureClearanceBlocks() { return plannedStructureClearanceBlocks; }
+    public void setPlannedStructureClearanceBlocks(int v) { this.plannedStructureClearanceBlocks = v; }
 }

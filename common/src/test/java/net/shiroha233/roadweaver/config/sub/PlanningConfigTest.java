@@ -29,4 +29,16 @@ class PlanningConfigTest {
         assertNotSame(config, snapshot);
         assertEquals(TerrainSamplingMode.FULL_REGION, snapshot.terrainSamplingMode());
     }
+
+    @Test
+    void boundsCorridorPaddingToAUsefulDetourRange() {
+        PlanningConfig config = new PlanningConfig();
+        config.setCoarseCorridorPaddingBlocks(-1);
+        config.sanitize();
+        assertEquals(128, config.coarseCorridorPaddingBlocks());
+
+        config.setCoarseCorridorPaddingBlocks(99_999);
+        config.sanitize();
+        assertEquals(4096, config.coarseCorridorPaddingBlocks());
+    }
 }

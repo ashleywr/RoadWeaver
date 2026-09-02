@@ -20,6 +20,7 @@ public final class ModConfig {
     private RoadsideStructureConfig roadsideStructure = new RoadsideStructureConfig();
     private RoadsideVillageConfig roadsideVillage = new RoadsideVillageConfig();
     private ClientConfig client = new ClientConfig();
+    private MapAppearanceConfig mapAppearance = new MapAppearanceConfig();
 
     public void sanitize() {
         if (structurePrediction == null) structurePrediction = new StructurePredictionConfig();
@@ -31,6 +32,7 @@ public final class ModConfig {
         if (roadsideStructure == null) roadsideStructure = new RoadsideStructureConfig();
         if (roadsideVillage == null) roadsideVillage = new RoadsideVillageConfig();
         if (client == null) client = new ClientConfig();
+        if (mapAppearance == null) mapAppearance = new MapAppearanceConfig();
 
         structurePrediction.sanitize();
         planning.sanitize();
@@ -41,6 +43,7 @@ public final class ModConfig {
         roadsideStructure.sanitize();
         roadsideVillage.sanitize();
         client.sanitize();
+        mapAppearance.sanitize();
 
     }
 
@@ -55,6 +58,7 @@ public final class ModConfig {
     public RoadsideStructureConfig roadsideStructure() { return roadsideStructure; }
     public RoadsideVillageConfig roadsideVillage() { return roadsideVillage; }
     public ClientConfig client() { return client; }
+    public MapAppearanceConfig mapAppearance() { return mapAppearance; }
 
     public boolean loadingTipsEnabled() {
         return client.loadingTipsEnabled();
@@ -186,6 +190,10 @@ public final class ModConfig {
 
     public int otherStructureRoadOffset() {
         return structurePrediction.otherStructureRoadOffset();
+    }
+
+    public int plannedStructureClearanceBlocks() {
+        return structurePrediction.plannedStructureClearanceBlocks();
     }
 
     public int aStarStep() {

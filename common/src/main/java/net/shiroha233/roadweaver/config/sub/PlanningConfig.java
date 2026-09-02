@@ -12,7 +12,7 @@ public final class PlanningConfig implements SubConfig {
     /**
      * 规划算法枚举。
      */
-    public enum PlanningAlgorithm { KNN, DELAUNAY, RNG, MST, SNAP_BRANCH }
+    public enum PlanningAlgorithm { KNN, DELAUNAY, RNG, MST, NATURAL, SNAP_BRANCH }
 
     private int initialPlanRadiusChunks = RoadConstants.DEFAULT_INITIAL_PLAN_RADIUS_CHUNKS;
     private boolean dynamicPlanEnabled = true;
@@ -24,6 +24,8 @@ public final class PlanningConfig implements SubConfig {
     private int maxComponentBridgeLengthBlocks = RoadConstants.DEFAULT_BRIDGE_JOIN_LEN_BLOCKS;
     private PlanningAlgorithm planningAlgorithm = PlanningAlgorithm.RNG;
     private TerrainSamplingMode terrainSamplingMode = TerrainSamplingMode.COARSE_CORRIDOR;
+    /** Extra terrain around each coarse route, leaving room for believable detours. */
+    private int coarseCorridorPaddingBlocks = 1024;
 
     @Override
     public void sanitize() {
@@ -43,6 +45,7 @@ public final class PlanningConfig implements SubConfig {
         maxComponentBridgeLengthBlocks = Math.max(512, Math.min(maxConnectionLengthBlocks, maxComponentBridgeLengthBlocks));
         if (planningAlgorithm == null) planningAlgorithm = PlanningAlgorithm.RNG;
         if (terrainSamplingMode == null) terrainSamplingMode = TerrainSamplingMode.COARSE_CORRIDOR;
+        coarseCorridorPaddingBlocks = Math.max(128, Math.min(4096, coarseCorridorPaddingBlocks));
     }
 
     @Override
@@ -56,6 +59,7 @@ public final class PlanningConfig implements SubConfig {
         copy.maxComponentBridgeLengthBlocks = this.maxComponentBridgeLengthBlocks;
         copy.planningAlgorithm = this.planningAlgorithm;
         copy.terrainSamplingMode = this.terrainSamplingMode;
+        copy.coarseCorridorPaddingBlocks = this.coarseCorridorPaddingBlocks;
         return copy;
     }
 
@@ -77,4 +81,6 @@ public final class PlanningConfig implements SubConfig {
     public void setAlgorithm(PlanningAlgorithm v) { this.planningAlgorithm = v; }
     public TerrainSamplingMode terrainSamplingMode() { return terrainSamplingMode; }
     public void setTerrainSamplingMode(TerrainSamplingMode v) { this.terrainSamplingMode = v; }
+    public int coarseCorridorPaddingBlocks() { return coarseCorridorPaddingBlocks; }
+    public void setCoarseCorridorPaddingBlocks(int v) { this.coarseCorridorPaddingBlocks = v; }
 }
