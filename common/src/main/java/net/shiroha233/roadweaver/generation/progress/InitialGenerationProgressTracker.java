@@ -121,6 +121,23 @@ public final class InitialGenerationProgressTracker {
         }
     }
 
+    /** Declares aggregate work before a multi-corridor route batch begins. */
+    public static void setCoarseSamplingPlan(long totalSamples, String operation) {
+        SAMPLES_TOTAL.set(Math.max(0L, totalSamples));
+        SAMPLES_DONE.set(0L);
+        TILES_TOTAL.set(0);
+        TILES_LOADED.set(0);
+        TILES_SAMPLED.set(0);
+        TILES_FROM_MEMORY.set(0);
+        TILES_FROM_DISK.set(0);
+        LAST_SAMPLE_SNAPSHOT_AT.set(0L);
+        LAST_SAMPLE_SNAPSHOT_COUNT.set(0L);
+        SAMPLES_PER_SECOND.set(0.0);
+        if (operation != null && !operation.isBlank()) {
+            CURRENT_OPERATION.set(operation);
+        }
+    }
+
     public static void recordTileLoaded() {
         TILES_LOADED.incrementAndGet();
     }
@@ -276,7 +293,9 @@ public final class InitialGenerationProgressTracker {
             case PLANNING -> percent(CONNECTIONS_TOTAL.get(), Math.max(1, CONNECTIONS_TOTAL.get()));
             case EXACT_SAMPLING -> percent(EXACT_SAMPLES_DONE.get(), EXACT_SAMPLES_TOTAL.get());
             case EXACT_PATHING -> percent(EXACT_PATHS_DONE.get(), EXACT_PATHS_TOTAL.get());
-            case COARSE_SAMPLING -> percent(TILES_LOADED.get(), TILES_TOTAL.get());
+            case COARSE_SAMPLING -> SAMPLES_TOTAL.get() > 0L
+                    ? percent(SAMPLES_DONE.get(), SAMPLES_TOTAL.get())
+                    : percent(TILES_LOADED.get(), TILES_TOTAL.get());
             case COARSE_PATHING -> percent(COARSE_PATHS_DONE.get(), COARSE_PATHS_TOTAL.get());
             case ROAD_GENERATION -> percent(CONNECTIONS_DONE.get() + CONNECTIONS_FAILED.get(), CONNECTIONS_TOTAL.get());
             case POST_PROCESSING -> 50;
