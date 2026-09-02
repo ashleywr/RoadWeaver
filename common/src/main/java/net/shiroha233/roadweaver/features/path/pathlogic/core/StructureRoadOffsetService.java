@@ -7,6 +7,7 @@ import net.shiroha233.roadweaver.world.RoadGenerationDimensions;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.core.model.RoadSegmentPlacement;
 import net.shiroha233.roadweaver.core.model.StructureInfo;
+import net.shiroha233.roadweaver.persistence.files.StructureFileStorage;
 import net.shiroha233.roadweaver.search.StructurePredictor;
 
 import java.util.ArrayList;
@@ -104,6 +105,24 @@ public final class StructureRoadOffsetService {
         int searchRadius = 1;
         int tolerance = Math.max(MATCH_TOLERANCE_BLOCKS, ConfigService.get().aStarStep() + 8);
         long tol2 = (long) tolerance * (long) tolerance;
+
+        // Campaign integrations register their endpoints before the actual
+        // jigsaw structure exists.  Consult that persisted identity first so
+        // the physical road is trimmed to the planned settlement edge instead
+        // of starting at its eventual structure centre.
+        List<StructureInfo> registeredInfos = StructureFileStorage.queryRect(
+                level,
+                endpoint.getX() - tolerance, endpoint.getZ() - tolerance,
+                endpoint.getX() + tolerance, endpoint.getZ() + tolerance,
+                StructureFileStorage.SOURCE_MANUAL);
+        for (StructureInfo info : registeredInfos) {
+            BlockPos p = info.pos();
+            long dx = (long) p.getX() - endpoint.getX();
+            long dz = (long) p.getZ() - endpoint.getZ();
+            if (dx * dx + dz * dz <= tol2) {
+                return StructureCategory.OTHER;
+            }
+        }
 
         List<StructureInfo> villageInfos = StructurePredictor.predictOverworldStructuresInRect(
                 level,
