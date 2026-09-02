@@ -104,13 +104,14 @@ public final class CoarseTerrainRegionSampler {
         ArrayList<CoarseTerrainTileKey> keys = new ArrayList<>();
         CoarseTerrainTileKey min = CoarseTerrainTileKey.forBlock(bounds.dimensionId(), bounds.minX(), bounds.minZ(), bounds.step());
         CoarseTerrainTileKey max = CoarseTerrainTileKey.forBlock(bounds.dimensionId(), bounds.maxX(), bounds.maxZ(), bounds.step());
+        int tileSizeChunks = CoarseTerrainTileKey.tileSizeChunksForStep(bounds.step());
         for (int tileZ = min.tileZ(); tileZ <= max.tileZ(); tileZ++) {
             for (int tileX = min.tileX(); tileX <= max.tileX(); tileX++) {
                 keys.add(new CoarseTerrainTileKey(
                         bounds.dimensionId(),
                         tileX,
                         tileZ,
-                        RoadConstants.COARSE_TERRAIN_TILE_SIZE_CHUNKS,
+                        tileSizeChunks,
                         bounds.step(),
                         RoadConstants.COARSE_TERRAIN_TILE_SCHEMA_VERSION));
             }

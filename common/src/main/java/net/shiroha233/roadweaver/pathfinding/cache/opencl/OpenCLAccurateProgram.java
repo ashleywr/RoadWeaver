@@ -351,6 +351,13 @@ final class OpenCLAccurateProgram implements AutoCloseable {
         long preliminarySurfaceBytes = Math.multiplyExact(
                 (long) Math.max(1, preliminaryPointCount), Integer.BYTES);
         long outputBytes = Math.multiplyExact((long) columnWorkItems, Integer.BYTES);
+        OpenCLExternal2dData external2d = OpenCLExternal2dData.accurate(
+                graph,
+                chunkKeys,
+                columnReferences,
+                noiseSettings.getCellWidth(),
+                aquiferPlan.positions(),
+                aquiferPlan.preliminaryCoordinates());
 
         OpenCLDensityProgramBuffers graphBuffers = buffers(runtime);
         OpenCLAccurateWorkspace.BatchBuffers batchBuffers = workspace(runtime).prepare(
@@ -389,13 +396,17 @@ final class OpenCLAccurateProgram implements AutoCloseable {
         ArrayList<OpenCLBridge.CommandEvent> preliminaryEvents = new ArrayList<>(2);
         ArrayList<OpenCLBridge.CommandEvent> aquiferEvents = new ArrayList<>(1);
         ArrayList<OpenCLBridge.CommandEvent> heightEvents = new ArrayList<>(2);
-        try {
+        try (OpenCLBridge.DeviceBuffer externalKeys = runtime.upload(external2d.keys());
+             OpenCLBridge.DeviceBuffer externalValues = runtime.upload(external2d.values())) {
+            try {
                 if (latticeWorkItems > 0) {
                     ArrayList<OpenCLBridge.DeviceBuffer> arguments = new ArrayList<>(20);
                     arguments.add(paramsBuffer);
                     arguments.add(chunksBuffer);
                     arguments.add(latticeReferencesBuffer);
                     arguments.addAll(graphBuffers.arguments());
+                    arguments.add(externalKeys);
+                    arguments.add(externalValues);
                     arguments.add(graphBuffers.interpolatedNodes());
                     arguments.add(latticeBuffer);
                     arguments.add(scratchBuffer);
@@ -419,6 +430,8 @@ final class OpenCLAccurateProgram implements AutoCloseable {
                     arguments.add(paramsBuffer);
                     arguments.add(preliminaryPositionsBuffer);
                     arguments.addAll(graphBuffers.arguments());
+                    arguments.add(externalKeys);
+                    arguments.add(externalValues);
                     arguments.add(scratchBuffer);
                     arguments.add(preliminarySurfaceBuffer);
                     OpenCLBridge.CommandEvent preliminaryEvent = runtime.enqueue(
@@ -434,6 +447,8 @@ final class OpenCLAccurateProgram implements AutoCloseable {
                     arguments.add(pointPreliminaryIndicesBuffer);
                     arguments.add(preliminarySurfaceBuffer);
                     arguments.addAll(graphBuffers.arguments());
+                    arguments.add(externalKeys);
+                    arguments.add(externalValues);
                     arguments.add(graphBuffers.interpolatedNodes());
                     arguments.add(latticeBuffer);
                     arguments.add(aquiferStatusBuffer);
@@ -462,6 +477,8 @@ final class OpenCLAccurateProgram implements AutoCloseable {
                     arguments.add(aquiferPositionsBuffer);
                     arguments.add(aquiferPointIndicesBuffer);
                     arguments.addAll(graphBuffers.arguments());
+                    arguments.add(externalKeys);
+                    arguments.add(externalValues);
                     arguments.add(latticeBuffer);
                     arguments.add(aquiferStatusBuffer);
                     arguments.add(scratchBuffer);
@@ -482,6 +499,8 @@ final class OpenCLAccurateProgram implements AutoCloseable {
                     arguments.add(aquiferPositionsBuffer);
                     arguments.add(aquiferPointIndicesBuffer);
                     arguments.addAll(graphBuffers.arguments());
+                    arguments.add(externalKeys);
+                    arguments.add(externalValues);
                     arguments.add(graphBuffers.interpolatedNodes());
                     arguments.add(latticeBuffer);
                     arguments.add(aquiferStatusBuffer);
@@ -507,8 +526,9 @@ final class OpenCLAccurateProgram implements AutoCloseable {
                 AccurateSamplingStats.recordGpuKernelStages(
                         latticeKernelNanos, preliminaryKernelNanos, aquiferKernelNanos, heightKernelNanos);
                 return new HeightColumns(worldSurface, oceanFloor, motionBlocking, kernelNanos);
-        } finally {
-            events.forEach(OpenCLBridge.CommandEvent::close);
+            } finally {
+                events.forEach(OpenCLBridge.CommandEvent::close);
+            }
         }
     }
 

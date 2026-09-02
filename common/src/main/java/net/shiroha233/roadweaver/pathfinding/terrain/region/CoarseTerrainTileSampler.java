@@ -4,6 +4,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.shiroha233.roadweaver.core.constants.RoadConstants;
 import net.shiroha233.roadweaver.map.tile.render.HeightShader;
 import net.shiroha233.roadweaver.map.tile.render.TerrainTilePalette;
@@ -18,6 +19,9 @@ import net.shiroha233.roadweaver.pathfinding.cache.TerrainSamplingCache;
  */
 public final class CoarseTerrainTileSampler {
     private CoarseTerrainTileSampler() {}
+
+    /** Keep expensive custom-generator biome queries aligned with their coarse height grid. */
+    private static final int CUSTOM_GENERATOR_BIOME_SAMPLE_SPACING_BLOCKS = 32;
 
     public static CoarseTerrainTile sample(ServerLevel level, CoarseTerrainTileKey key) {
         if (level == null || key == null) {
@@ -56,9 +60,14 @@ public final class CoarseTerrainTileSampler {
                     int sampleX = key.minBlockX() + (ex - haloSamples) * key.step();
                     int height = expandedHeights[ez * expandedWidth + ex];
                     int oceanFloor = height;
-                    Holder<Biome> biome = terrainCache.getBiome(level, sampleX, sampleZ);
+                    Holder<Biome> biome = sampledBiome(terrainCache, level, sampleX, sampleZ);
                     boolean waterBiome = isWaterBiome(biome);
-                    boolean columnWater = waterBiome && oceanFloor < seaLevel;
+                    // Custom generators such as OTG can supply a real ocean
+                    // biome that is not present in vanilla's biome tags.  The
+                    // terrain fact remains authoritative: an unloaded solid
+                    // floor below sea level is a water column and must render
+                    // and path as such.
+                    boolean columnWater = oceanFloor < seaLevel;
                     byte rawFlags = CoarseTerrainTile.flags(columnWater, waterBiome, false);
                     expandedFlags[ez * expandedWidth + ex] = rawFlags;
 
@@ -122,7 +131,7 @@ public final class CoarseTerrainTileSampler {
             for (int x = 0; x < sampleWidth; x++) {
                 int sampleX = key.blockXAt(x);
                 int index = z * sampleWidth + x;
-                Holder<Biome> biome = terrainCache.getBiome(level, sampleX, sampleZ);
+                Holder<Biome> biome = sampledBiome(terrainCache, level, sampleX, sampleZ);
                 boolean columnWater = hasColumnWater(flags[index]);
                 boolean nearWater = (flags[index] & 4) != 0;
                 int baseColor = TerrainTilePalette.colorFor(biome, heights[index], seaLevel, oceanFloors[index], columnWater, nearWater);
@@ -139,7 +148,7 @@ public final class CoarseTerrainTileSampler {
                     shade = HeightShader.simpleShade(heights[index], heights[z * sampleWidth + x - 1], step);
                 }
 
-                terrainArgb[index] = HeightShader.multiplyRgb(baseColor, shade);
+                terrainArgb[index] = TerrainTilePalette.applyHillshade(baseColor, shade);
             }
         }
     }
@@ -163,6 +172,20 @@ public final class CoarseTerrainTileSampler {
 
     private static boolean hasColumnWater(byte flags) {
         return (flags & 1) != 0;
+    }
+
+    private static Holder<Biome> sampledBiome(TerrainSamplingCache terrainCache,
+                                               ServerLevel level,
+                                               int x,
+                                               int z) {
+        if (level.getChunkSource().getGenerator() instanceof NoiseBasedChunkGenerator) {
+            return terrainCache.getBiome(level, x, z);
+        }
+        int sampleX = Math.floorDiv(x, CUSTOM_GENERATOR_BIOME_SAMPLE_SPACING_BLOCKS)
+                * CUSTOM_GENERATOR_BIOME_SAMPLE_SPACING_BLOCKS;
+        int sampleZ = Math.floorDiv(z, CUSTOM_GENERATOR_BIOME_SAMPLE_SPACING_BLOCKS)
+                * CUSTOM_GENERATOR_BIOME_SAMPLE_SPACING_BLOCKS;
+        return terrainCache.getBiome(level, sampleX, sampleZ);
     }
 
     private static boolean isWaterBiome(Holder<Biome> biome) {

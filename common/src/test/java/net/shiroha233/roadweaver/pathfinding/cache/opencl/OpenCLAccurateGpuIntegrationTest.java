@@ -184,9 +184,14 @@ class OpenCLAccurateGpuIntegrationTest {
                 graph.splines().size()
         };
         OpenCLDensityProgramPayload payload = OpenCLDensityProgramPayload.from(graph);
+        OpenCLExternal2dData external2d = OpenCLExternal2dData.coarse(graph,
+                new net.shiroha233.roadweaver.pathfinding.cache.CoarseHeightBatchRequest(
+                        minX, minZ, step, width, width));
         synchronized (runtime.operationLock()) {
             try (OpenCLDensityProgramBuffers graphBuffers = OpenCLDensityProgramBuffers.upload(runtime, payload);
                  OpenCLBridge.DeviceBuffer paramsBuffer = runtime.upload(params);
+                 OpenCLBridge.DeviceBuffer externalKeys = runtime.upload(external2d.keys());
+                 OpenCLBridge.DeviceBuffer externalValues = runtime.upload(external2d.values());
                  OpenCLBridge.DeviceBuffer scratch = runtime.allocate(
                          OpenCLBridge.BufferAccess.READ_WRITE, (long) count * graph.nodes().size() * Double.BYTES);
                  OpenCLBridge.DeviceBuffer output = runtime.allocate(
@@ -194,6 +199,8 @@ class OpenCLAccurateGpuIntegrationTest {
                 ArrayList<OpenCLBridge.DeviceBuffer> arguments = new ArrayList<>();
                 arguments.add(paramsBuffer);
                 arguments.addAll(graphBuffers.arguments());
+                arguments.add(externalKeys);
+                arguments.add(externalValues);
                 arguments.add(scratch);
                 arguments.add(output);
                 runtime.execute(OpenCLRuntime.COARSE_HEIGHT_KERNEL, arguments, count);

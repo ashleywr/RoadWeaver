@@ -85,7 +85,7 @@ public final class GradientDescentPathfinder implements Pathfinder {
                 if (current == null) break;
 
                 stepsBudget--;
-                ThrottleHelper.throttle(RoadConstants.DEFAULT_DUTY_CYCLE);
+                ThrottleHelper.throttleConfigured();
                 if (Thread.currentThread().isInterrupted()) return null;
 
                 if (manhattan2d(current.pos, end) < (int) (d * RoadConstants.GRADIENT_DESCENT_SUCCESS_DISTANCE_FACTOR)) {
@@ -98,7 +98,7 @@ public final class GradientDescentPathfinder implements Pathfinder {
                 for (int[] off : offsets) {
                     BlockPos nxz = current.pos.offset(off[0], 0, off[1]);
                     if (nxz.getX() < minX || nxz.getX() > maxX || nxz.getZ() < minZ || nxz.getZ() > maxZ) continue;
-                    if (!terrain.contains(nxz.getX(), nxz.getZ())) continue;
+                    if (!terrain.contains(nxz.getX(), nxz.getZ()) || terrain.isBlocked(nxz.getX(), nxz.getZ())) continue;
 
                     int y = heightSampler(terrain, nxz.getX(), nxz.getZ());
                     BlockPos np = new BlockPos(nxz.getX(), y, nxz.getZ());

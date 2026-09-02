@@ -81,7 +81,7 @@ public final class BidirectionalAStarPathfinder implements Pathfinder {
                 if (peekF == null || peekB == null) break;
 
                 stepsBudget--;
-                ThrottleHelper.throttle(RoadConstants.DEFAULT_DUTY_CYCLE);
+                ThrottleHelper.throttleConfigured();
                 if (Thread.currentThread().isInterrupted()) return null;
 
                 boolean expandForward;
@@ -122,7 +122,7 @@ public final class BidirectionalAStarPathfinder implements Pathfinder {
         for (int[] off : offsets) {
             if (Thread.currentThread().isInterrupted()) return null;
             BlockPos nxz = current.pos.offset(off[0], 0, off[1]);
-            if (!terrain.contains(nxz.getX(), nxz.getZ())) continue;
+            if (!terrain.contains(nxz.getX(), nxz.getZ()) || terrain.isBlocked(nxz.getX(), nxz.getZ())) continue;
             int y = heightSampler(terrain, nxz.getX(), nxz.getZ());
             BlockPos np = new BlockPos(nxz.getX(), y, nxz.getZ());
             if (closedThis.contains(np)) continue;

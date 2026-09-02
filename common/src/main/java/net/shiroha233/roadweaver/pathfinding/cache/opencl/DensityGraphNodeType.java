@@ -31,5 +31,12 @@ public enum DensityGraphNodeType {
     MARKER,
     INTERPOLATED,
     BLENDED_NOISE,
-    END_ISLAND
+    END_ISLAND,
+    /**
+     * A deterministic two-dimensional field evaluated on the host for an
+     * otherwise GPU-compiled density graph.  This is intentionally limited to
+     * registered integration leaves (currently Region Engine's Atlas fields),
+     * rather than silently accepting arbitrary unsupported density functions.
+     */
+    EXTERNAL_2D
 }

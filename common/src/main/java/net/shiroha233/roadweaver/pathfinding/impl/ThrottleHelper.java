@@ -1,5 +1,6 @@
 package net.shiroha233.roadweaver.pathfinding.impl;
 
+import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.core.constants.RoadConstants;
 
 /**
@@ -26,6 +27,17 @@ public final class ThrottleHelper {
             }
             WORK_START.set(System.currentTimeMillis());
         }
+    }
+
+    /** Uses the configured planning budget instead of silently hard-coding a default. */
+    public static void throttleConfigured() {
+        int duty = RoadConstants.DEFAULT_DUTY_CYCLE;
+        try {
+            duty = ConfigService.get().performance().threadDutyCycle();
+        } catch (Throwable ignored) {
+            // Configuration may be unavailable during an early client teardown.
+        }
+        throttle(duty);
     }
 
     public static void resetThrottle() {

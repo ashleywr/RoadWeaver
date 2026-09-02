@@ -22,7 +22,11 @@ public record CoarseTerrainTileKey(ResourceLocation dimensionId,
     }
 
     public static CoarseTerrainTileKey forBlock(ResourceLocation dimensionId, int blockX, int blockZ, int step) {
-        int tileSizeChunks = RoadConstants.COARSE_TERRAIN_TILE_SIZE_CHUNKS;
+        // A continent overview is deliberately sampled at 64+ blocks. Keep
+        // those cache tiles physically larger so a 16 km map does not create
+        // thousands of tiny route-planning tiles. Fine route sampling remains
+        // on the existing 16-chunk tile shape.
+        int tileSizeChunks = tileSizeChunksForStep(step);
         int tileBlocks = tileSizeChunks * RoadConstants.CHUNK_SIZE_BLOCKS;
         return new CoarseTerrainTileKey(
                 dimensionId,
@@ -31,6 +35,18 @@ public record CoarseTerrainTileKey(ResourceLocation dimensionId,
                 tileSizeChunks,
                 step,
                 RoadConstants.COARSE_TERRAIN_TILE_SCHEMA_VERSION);
+    }
+
+    public static int tileSizeChunksForStep(int step) {
+        if (step >= 256) return 256;
+        if (step >= 128) return 128;
+        // Custom generators have meaningful fixed overhead every time a
+        // height/biome sampler is opened. At a 32-block planning grid, a
+        // 16-chunk tile contains only 9x9 samples, so route corridors spend
+        // most of their time repeatedly constructing samplers. A 64-chunk
+        // tile stays small enough for responsive map invalidation (33x33
+        // samples) while amortising that work across a useful terrain area.
+        return step >= 32 ? 64 : RoadConstants.COARSE_TERRAIN_TILE_SIZE_CHUNKS;
     }
 
     public int tileSizeBlocks() {

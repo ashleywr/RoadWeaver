@@ -1,6 +1,7 @@
 package net.shiroha233.roadweaver.pathfinding.cache;
 
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.shiroha233.roadweaver.config.ConfigService;
 import net.shiroha233.roadweaver.config.sub.PerformanceConfig;
 import net.shiroha233.roadweaver.generation.progress.InitialGenerationProgressTracker;
@@ -26,6 +27,19 @@ public final class CoarseHeightBatchSamplers {
     private CoarseHeightBatchSamplers() {}
 
     public static CoarseHeightBatchSampler create(ServerLevel level, CoarseHeightBatchRequest request) {
+        if (level != null && !(level.getChunkSource().getGenerator() instanceof NoiseBasedChunkGenerator)) {
+            String generatorName = level.getChunkSource().getGenerator().getClass().getName();
+            boolean terra = generatorName.equals("com.dfsek.terra.mod.generation.MinecraftChunkGeneratorWrapper");
+            InitialGenerationProgressTracker.setBackend(terra ? "TERRA_NATIVE" : "CPU_GENERATOR", "CPU",
+                    terra ? "Terra native terrain sampler; OpenCL density compilation is vanilla-only" : "custom chunk generator");
+            if (FALLBACK_LOGGED.compareAndSet(false, true)) {
+                LOGGER.info(terra
+                                ? "粗高度采样使用 Terra 原生地形采样器；OpenCL density kernel 仅适用于原版 NoiseBasedChunkGenerator"
+                                : "粗高度采样使用自定义生成器的 base-height API: {}",
+                        terra ? new Object[0] : new Object[]{generatorName});
+            }
+            return GeneratorCoarseHeightBatchSampler.create(level);
+        }
         CoarseHeightBatchSampler opencl = tryCreateOpenCL(level, request);
         if (opencl != null) {
             return opencl;

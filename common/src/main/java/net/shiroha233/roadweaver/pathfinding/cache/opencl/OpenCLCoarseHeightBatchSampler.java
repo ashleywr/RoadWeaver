@@ -246,13 +246,18 @@ public final class OpenCLCoarseHeightBatchSampler implements CoarseHeightBatchSa
 
     private int[] sampleHeightsOpenCLWithProgram(CoarseHeightBatchRequest request) {
         RequestKernelPayload payload = RequestKernelPayload.from(program, request, minY, maxY, cellHeight);
+        OpenCLExternal2dData external2d = OpenCLExternal2dData.coarse(program, request);
         OpenCLDensityProgramBuffers staticBuffers = cachedProgram.buffers(runtime);
         try (OpenCLBridge.DeviceBuffer params = runtime.upload(payload.params());
+             OpenCLBridge.DeviceBuffer externalKeys = runtime.upload(external2d.keys());
+             OpenCLBridge.DeviceBuffer externalValues = runtime.upload(external2d.values());
              OpenCLBridge.DeviceBuffer scratch = runtime.allocate(OpenCLBridge.BufferAccess.READ_WRITE, payload.scratchBytes());
              OpenCLBridge.DeviceBuffer heights = runtime.allocate(OpenCLBridge.BufferAccess.WRITE_ONLY, intBytes(request.sampleCount()))) {
-            List<OpenCLBridge.DeviceBuffer> arguments = new ArrayList<>(17);
+            List<OpenCLBridge.DeviceBuffer> arguments = new ArrayList<>(19);
             arguments.add(params);
             arguments.addAll(staticBuffers.arguments());
+            arguments.add(externalKeys);
+            arguments.add(externalValues);
             arguments.add(scratch);
             arguments.add(heights);
             runtime.execute(OpenCLRuntime.COARSE_HEIGHT_KERNEL, arguments, request.sampleCount());

@@ -18,6 +18,7 @@ import java.util.EnumMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Minecraft density graph 到 OpenCL 节点表的编译器。
@@ -30,6 +31,7 @@ public final class DensityGraphCompiler {
     private final NoiseTableExtractor noiseTables = new NoiseTableExtractor();
     private final List<OpenCLSpline> splines = new ArrayList<>();
     private final List<Integer> interpolatedNodes = new ArrayList<>();
+    private final List<DensityFunction> external2dFields = new ArrayList<>();
     private final boolean preserveInterpolation;
 
     private DensityGraphCompiler(boolean preserveInterpolation) {
@@ -48,7 +50,8 @@ public final class DensityGraphCompiler {
                     compiler.nodes,
                     compiler.constants,
                     compiler.noiseTables.toTables(),
-                    compiler.splines));
+                    compiler.splines,
+                    compiler.external2dFields));
         } catch (TemporaryDensityGraphException e) {
             return DensityGraphCompileResult.retryable(e.getMessage());
         } catch (UnsupportedDensityGraphException e) {
@@ -84,7 +87,8 @@ public final class DensityGraphCompiler {
                     compiler.nodes,
                     compiler.constants,
                     compiler.noiseTables.toTables(),
-                    compiler.splines));
+                    compiler.splines,
+                    compiler.external2dFields));
         } catch (TemporaryDensityGraphException e) {
             return DensityGraphCompileResult.retryable(e.getMessage());
         } catch (UnsupportedDensityGraphException e) {
@@ -98,6 +102,7 @@ public final class DensityGraphCompiler {
     }
 
     private int compileNode(DensityFunction function) {
+        function = unwrapC2meCompiledFunction(function);
         Integer cached = seen.get(function);
         if (cached != null) {
             return cached;
@@ -108,7 +113,38 @@ public final class DensityGraphCompiler {
         return index;
     }
 
+    /**
+     * C2ME replaces router roots with a compiled facade after datapack loading.
+     * Its protected fallback retains the original density DAG, which is what
+     * RoadWeaver needs to translate for OpenCL.  The facade itself has no
+     * stable public graph representation, so it must not be treated as an
+     * arbitrary supported node.
+     */
+    private static DensityFunction unwrapC2meCompiledFunction(DensityFunction function) {
+        if (function == null
+                || !function.getClass().getName().startsWith("com.ishland.c2me.opts.dfc.common.gen.jvm.")) {
+            return function;
+        }
+        Object fallback = DensityGraphReflection.read(function, "blendingFallback");
+        if (fallback instanceof Supplier<?> supplier) {
+            try {
+                Object original = supplier.get();
+                if (original instanceof DensityFunction densityFunction && densityFunction != function) {
+                    return densityFunction;
+                }
+            } catch (RuntimeException ignored) {
+                // C2ME can discard a fallback in a later lifecycle phase; keep
+                // the wrapper unsupported and use RoadWeaver's normal CPU path.
+            }
+        }
+        return function;
+    }
+
     private int compileUncached(DensityFunction function) {
+        ResourceLocation typeKey = densityTypeKey(function);
+        if (isRegionEngineAtlasField(typeKey)) {
+            return external2d(function);
+        }
         String typeId = densityTypeId(function);
         return switch (typeId) {
             case "constant", "Constant" -> constant(function);
@@ -146,13 +182,42 @@ public final class DensityGraphCompiler {
             return "marker";
         }
         try {
-            ResourceLocation id = BuiltInRegistries.DENSITY_FUNCTION_TYPE.getKey(function.codec().codec());
+            ResourceLocation id = densityTypeKey(function);
             if (id != null) {
                 return id.getPath();
             }
         } catch (RuntimeException ignored) {
         }
         return function.getClass().getSimpleName();
+    }
+
+    private static ResourceLocation densityTypeKey(DensityFunction function) {
+        try {
+            return BuiltInRegistries.DENSITY_FUNCTION_TYPE.getKey(function.codec().codec());
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean isRegionEngineAtlasField(ResourceLocation typeKey) {
+        return typeKey != null
+                && "region_engine".equals(typeKey.getNamespace())
+                && ("atlas_field".equals(typeKey.getPath()) || "atlas_erosion".equals(typeKey.getPath()));
+    }
+
+    private int external2d(DensityFunction function) {
+        int fieldIndex = external2dFields.size();
+        external2dFields.add(function);
+        return add(new DensityGraphNode(
+                DensityGraphNodeType.EXTERNAL_2D,
+                -1,
+                -1,
+                fieldIndex,
+                -1,
+                0.0D,
+                0.0D,
+                0.0D,
+                0.0D));
     }
 
     private int constant(DensityFunction function) {

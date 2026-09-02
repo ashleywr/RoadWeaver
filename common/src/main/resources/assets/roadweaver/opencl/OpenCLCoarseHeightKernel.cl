@@ -29,6 +29,7 @@
 #define NODE_INTERPOLATED 24
 #define NODE_BLENDED_NOISE 25
 #define NODE_END_ISLAND 26
+#define NODE_EXTERNAL_2D 27
 
 #define PARAM_SAMPLE_COUNT 0
 #define PARAM_MIN_Y 1
@@ -539,6 +540,40 @@ static double spline_value(__global const int* spline_ints,
     return (double)result;
 }
 
+static uint external_2d_hash(int x, int z) {
+    uint value = (uint)x * 0x9E3779B9u ^ rotate((uint)z * 0x85EBCA6Bu, 16u);
+    value ^= value >> 16u;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15u;
+    value *= 0x846CA68Bu;
+    return value ^ value >> 16u;
+}
+
+static double external_2d_value(__global const int* external_keys,
+                                __global const double* external_values,
+                                int field,
+                                int x,
+                                int z) {
+    int mask = external_keys[0];
+    int field_count = external_keys[1];
+    if (mask <= 0 || field < 0 || field >= field_count) {
+        return 0.0;
+    }
+    int slot = (int)(external_2d_hash(x, z) & (uint)mask);
+    for (int probe = 0; probe <= mask; probe++) {
+        int key_base = 2 + slot * 2;
+        int entry_x = external_keys[key_base];
+        if (entry_x == -2147483648) {
+            return 0.0;
+        }
+        if (entry_x == x && external_keys[key_base + 1] == z) {
+            return external_values[slot * field_count + field];
+        }
+        slot = (slot + 1) & mask;
+    }
+    return 0.0;
+}
+
 static double evaluate_node(__global const int* node_ints,
                             __global const double* node_values,
                             __global const int* normal_ints,
@@ -553,6 +588,8 @@ static double evaluate_node(__global const int* node_ints,
                             __global const double* spline_locations,
                             __global const int* spline_value_nodes,
                             __global const double* spline_derivatives,
+                            __global const int* external_keys,
+                            __global const double* external_values,
                             __global double* scratch,
                             int scratch_base,
                             int node,
@@ -650,6 +687,8 @@ static double evaluate_node(__global const int* node_ints,
                     z);
         case NODE_END_ISLAND:
             return end_island_density(permutations, extra_a, x, z);
+        case NODE_EXTERNAL_2D:
+            return external_2d_value(external_keys, external_values, extra_a, x, z);
         case NODE_MARKER:
         case NODE_INTERPOLATED:
             return lhs;
@@ -672,6 +711,8 @@ static void evaluate_graph_nodes(__global const int* node_ints,
                                  __global const double* spline_locations,
                                  __global const int* spline_value_nodes,
                                  __global const double* spline_derivatives,
+                                 __global const int* external_keys,
+                                 __global const double* external_values,
                                  __global double* scratch,
                                  int scratch_base,
                                  int x,
@@ -687,7 +728,7 @@ static void evaluate_graph_nodes(__global const int* node_ints,
         scratch[scratch_base + node] = evaluate_node(
                 node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                 amplitudes, improved_indices, improved_values, permutations, spline_ints,
-                spline_locations, spline_value_nodes, spline_derivatives, scratch, scratch_base,
+                spline_locations, spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base,
                 node, x, y, z);
     }
 }
@@ -707,6 +748,8 @@ static void evaluate_graph(__global const int* params,
                            __global const double* spline_locations,
                            __global const int* spline_value_nodes,
                            __global const double* spline_derivatives,
+                           __global const int* external_keys,
+                           __global const double* external_values,
                            __global double* scratch,
                            int scratch_base,
                            int x,
@@ -714,7 +757,7 @@ static void evaluate_graph(__global const int* params,
                            int z) {
     evaluate_graph_nodes(node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
             amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-            spline_value_nodes, spline_derivatives, scratch, scratch_base, x, y, z,
+            spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base, x, y, z,
             params[PARAM_NODE_COUNT], 0);
 }
 
@@ -742,6 +785,8 @@ __kernel void roadweaver_coarse_height_sample(
         __global const double* spline_locations,
         __global const int* spline_value_nodes,
         __global const double* spline_derivatives,
+        __global const int* external_keys,
+        __global const double* external_values,
         __global double* scratch,
         __global int* heights
 ) {
@@ -767,7 +812,7 @@ __kernel void roadweaver_coarse_height_sample(
     for (int y = max_y; y >= min_y; y -= cell_height) {
         evaluate_graph(params, node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                 amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-                spline_value_nodes, spline_derivatives, scratch, scratch_base, x, y, z);
+                spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base, x, y, z);
         double density = scratch[scratch_base + root_node];
         if (density > 0.390625) {
             result = y;
@@ -861,6 +906,8 @@ static void evaluate_graph_interpolated(__global const int* params,
                                         __global const double* spline_locations,
                                         __global const int* spline_value_nodes,
                                         __global const double* spline_derivatives,
+                                        __global const int* external_keys,
+                                        __global const double* external_values,
                                         __global const double* lattice,
                                         __global double* scratch,
                                         int scratch_base,
@@ -883,7 +930,7 @@ static void evaluate_graph_interpolated(__global const int* params,
             result = evaluate_node(
                     node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                     amplitudes, improved_indices, improved_values, permutations, spline_ints,
-                    spline_locations, spline_value_nodes, spline_derivatives, scratch, scratch_base,
+                    spline_locations, spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base,
                     node, x, y, z);
         }
         scratch[scratch_base + node] = result;
@@ -936,6 +983,8 @@ static void compute_aquifer_status(__global const int* params,
                                    __global const double* spline_locations,
                                    __global const int* spline_value_nodes,
                                    __global const double* spline_derivatives,
+                                   __global const int* external_keys,
+                                   __global const double* external_values,
                                    __global const int* point_preliminary_indices,
                                    __global const int* preliminary_surfaces,
                                    __global double* scratch,
@@ -990,7 +1039,7 @@ static void compute_aquifer_status(__global const int* params,
     int node_count = params[ACC_NODE_COUNT];
     evaluate_graph_nodes(node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
             amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-            spline_value_nodes, spline_derivatives, scratch, scratch_base, x, y, z, node_count,
+            spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base, x, y, z, node_count,
             USAGE_FLOODEDNESS | USAGE_EROSION | USAGE_DEPTH);
     double erosion = scratch[scratch_base + params[ACC_ROOT_EROSION]];
     double depth = scratch[scratch_base + params[ACC_ROOT_DEPTH]];
@@ -1020,7 +1069,7 @@ static void compute_aquifer_status(__global const int* params,
         int grid_z = floor_div_int(z, 16);
         evaluate_graph_nodes(node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                 amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-                spline_value_nodes, spline_derivatives, scratch, scratch_base, grid_x, grid_y, grid_z,
+                spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base, grid_x, grid_y, grid_z,
                 node_count, USAGE_SPREAD);
         double spread = scratch[scratch_base + params[ACC_ROOT_SPREAD]] * 10.0;
         int quantized = floor_int(spread / 3.0) * 3;
@@ -1038,7 +1087,7 @@ static void compute_aquifer_status(__global const int* params,
         int grid_z = floor_div_int(z, 64);
         evaluate_graph_nodes(node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                 amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-                spline_value_nodes, spline_derivatives, scratch, scratch_base, grid_x, grid_y, grid_z,
+                spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base, grid_x, grid_y, grid_z,
                 node_count, USAGE_LAVA);
         if (fabs(scratch[scratch_base + params[ACC_ROOT_LAVA]]) > 0.3) {
             fluid_kind = FLUID_LAVA;
@@ -1246,6 +1295,8 @@ __kernel void roadweaver_accurate_lattice(
         __global const double* spline_locations,
         __global const int* spline_value_nodes,
         __global const double* spline_derivatives,
+        __global const int* external_keys,
+        __global const double* external_values,
         __global const int* interpolated_nodes,
         __global double* lattice,
         __global double* scratch
@@ -1270,7 +1321,7 @@ __kernel void roadweaver_accurate_lattice(
     int scratch_base = work_index * params[ACC_NODE_COUNT];
     evaluate_graph_nodes(node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
             amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-            spline_value_nodes, spline_derivatives, scratch, scratch_base, x, y, z,
+            spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base, x, y, z,
             params[ACC_NODE_COUNT], USAGE_INTERPOLATED_LATTICE);
 
     for (int slot = 0; slot < params[ACC_INTERPOLATOR_COUNT]; slot++) {
@@ -1305,6 +1356,8 @@ __kernel void roadweaver_accurate_preliminary(
         __global const double* spline_locations,
         __global const int* spline_value_nodes,
         __global const double* spline_derivatives,
+        __global const int* external_keys,
+        __global const double* external_values,
         __global double* scratch,
         volatile __global int* preliminary_surfaces
 ) {
@@ -1318,7 +1371,7 @@ __kernel void roadweaver_accurate_preliminary(
     evaluate_graph_nodes(
             node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
             amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-            spline_value_nodes, spline_derivatives, scratch, scratch_base,
+            spline_value_nodes, spline_derivatives, external_keys, external_values, scratch, scratch_base,
             preliminary_positions[position_base], y, preliminary_positions[position_base + 1],
             params[ACC_NODE_COUNT], USAGE_INITIAL_DENSITY);
     if (scratch[scratch_base + params[ACC_ROOT_INITIAL_DENSITY]] > 0.390625) {
@@ -1346,6 +1399,8 @@ __kernel void roadweaver_accurate_aquifer(
         __global const double* spline_locations,
         __global const int* spline_value_nodes,
         __global const double* spline_derivatives,
+        __global const int* external_keys,
+        __global const double* external_values,
         __global const int* interpolated_nodes,
         __global const double* lattice,
         __global int* aquifer_status,
@@ -1361,7 +1416,7 @@ __kernel void roadweaver_accurate_aquifer(
     compute_aquifer_status(
             params, node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
             amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-            spline_value_nodes, spline_derivatives, point_preliminary_indices, preliminary_surfaces,
+            spline_value_nodes, spline_derivatives, external_keys, external_values, point_preliminary_indices, preliminary_surfaces,
             scratch, index * params[ACC_NODE_COUNT], index,
             aquifer_positions[position_base], aquifer_positions[position_base + 1], aquifer_positions[position_base + 2],
             &level, &kind);
@@ -1401,6 +1456,8 @@ __kernel void roadweaver_accurate_height_parallel(
         __global const double* spline_locations,
         __global const int* spline_value_nodes,
         __global const double* spline_derivatives,
+        __global const int* external_keys,
+        __global const double* external_values,
         __global const double* lattice,
         __global const int* aquifer_status,
         __global double* scratch,
@@ -1428,7 +1485,7 @@ __kernel void roadweaver_accurate_height_parallel(
         evaluate_graph_interpolated(
                 params, chunks, node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                 amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-                spline_value_nodes, spline_derivatives, lattice, scratch, scratch_base, chunk_index, x, y, z);
+                spline_value_nodes, spline_derivatives, external_keys, external_values, lattice, scratch, scratch_base, chunk_index, x, y, z);
         double density = scratch[scratch_base + params[ACC_ROOT_FINAL_DENSITY]];
         int material_mask = classify_accurate_material(
                 params, chunks, aquifer_positions, aquifer_point_indices, aquifer_status, scratch, scratch_base,
@@ -1476,6 +1533,8 @@ __kernel void roadweaver_accurate_height(
         __global const double* spline_locations,
         __global const int* spline_value_nodes,
         __global const double* spline_derivatives,
+        __global const int* external_keys,
+        __global const double* external_values,
         __global const int* interpolated_nodes,
         __global const double* lattice,
         __global const int* aquifer_status,
@@ -1505,7 +1564,7 @@ __kernel void roadweaver_accurate_height(
         evaluate_graph_interpolated(
                 params, chunks, node_ints, node_values, normal_ints, normal_values, perlin_ints, perlin_values,
                 amplitudes, improved_indices, improved_values, permutations, spline_ints, spline_locations,
-                spline_value_nodes, spline_derivatives, lattice, scratch, scratch_base, chunk_index, x, y, z);
+                spline_value_nodes, spline_derivatives, external_keys, external_values, lattice, scratch, scratch_base, chunk_index, x, y, z);
         double density = scratch[scratch_base + params[ACC_ROOT_FINAL_DENSITY]];
         int material_mask = classify_accurate_material(
                 params, chunks, aquifer_positions, aquifer_point_indices, aquifer_status, scratch, scratch_base,

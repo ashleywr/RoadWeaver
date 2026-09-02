@@ -24,6 +24,16 @@ public interface PathTerrainField {
 
     boolean contains(int x, int z);
 
+    /**
+     * Whether a road may traverse this column during path search.  Terrain
+     * implementations deliberately default to passable; integrations can
+     * layer predictable structure clearances over an otherwise immutable
+     * sampled terrain field.
+     */
+    default boolean isBlocked(int x, int z) {
+        return false;
+    }
+
     int step();
 
     /**
