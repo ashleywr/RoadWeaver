@@ -23,6 +23,7 @@ import net.shiroha233.roadweaver.planning.terrain.TerrainSamplingSessionSnapshot
 import net.shiroha233.roadweaver.planning.terrain.TerrainSamplingSessions;
 import net.shiroha233.roadweaver.runtime.ThreadPoolManager;
 import net.shiroha233.roadweaver.search.StructureIndexService;
+import net.shiroha233.roadweaver.api.RoadNetworkApi;
 import net.shiroha233.roadweaver.util.ComputeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -259,6 +260,12 @@ public final class MapTerrainSamplingService {
 
     private static void queryStructures(ServerLevel level, MapSamplingBounds bounds) {
         if (level == null || bounds == null) return;
+        // A campaign integration may own the region's endpoint roster. Map
+        // sampling must not silently repopulate that graph with generic
+        // predictions after the initial planner deliberately excluded them.
+        if (RoadNetworkApi.hasExclusiveInitialPlanningCandidates(level,
+                new net.shiroha233.roadweaver.api.InitialPlanningBounds(
+                        bounds.minX(), bounds.minZ(), bounds.maxX(), bounds.maxZ()))) return;
         StructureIndexService.predictAndVerifyInRect(
                 level,
                 bounds.minX(), bounds.minZ(), bounds.maxX(), bounds.maxZ());
