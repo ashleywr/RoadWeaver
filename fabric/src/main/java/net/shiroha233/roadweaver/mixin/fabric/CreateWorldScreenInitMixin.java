@@ -56,8 +56,6 @@ public abstract class CreateWorldScreenInitMixin extends Screen {
 
                 if (levelStemRegistry != null) {
                     StructureDiscoveryService.discoverFromRegistries(structureRegistry, levelStemRegistry);
-                } else {
-                    StructureDiscoveryService.discoverFromRegistryAccess(registryAccess);
                 }
             }
         } catch (Exception e) {

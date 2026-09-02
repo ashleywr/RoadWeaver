@@ -126,15 +126,21 @@ public final class StructureDiscoveryService {
     /** 从 RegistryAccess 收集结构和标签（兼容客户端创建世界界面） */
     public static void discoverFromRegistryAccess(RegistryAccess registryAccess) {
         if (registryAccess == null) {
-            LOGGER.warn("无法发现结构: registryAccess 为 null");
+            LOGGER.debug("Skipping structure discovery: registry access is unavailable");
             return;
         }
         try {
             Registry<Structure> structureRegistry = registryAccess.registryOrThrow(Registries.STRUCTURE);
             Registry<LevelStem> levelStemRegistry = registryAccess.registryOrThrow(Registries.LEVEL_STEM);
             discoverFromRegistries(structureRegistry, levelStemRegistry);
+        } catch (IllegalStateException missingRegistry) {
+            // The create-world UI has a partial worldgen registry while its
+            // preset is still being assembled. In particular it commonly has
+            // structures but no dimension registry. This is not a discovery
+            // failure; wait for a loaded level or a complete context instead.
+            LOGGER.debug("Skipping structure discovery until worldgen registries are complete: {}", missingRegistry.getMessage());
         } catch (Exception e) {
-            LOGGER.error("结构发现失败", e);
+            LOGGER.debug("Skipping structure discovery from incomplete registry access", e);
         }
     }
 
